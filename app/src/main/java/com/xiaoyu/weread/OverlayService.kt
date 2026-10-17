@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.res.Configuration
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -45,6 +46,7 @@ class OverlayService : Service() {
     private lateinit var windows: WindowManager
     private lateinit var root: LinearLayout
     private lateinit var overlayParams: WindowManager.LayoutParams
+    private lateinit var titleLabel: TextView
     private lateinit var resultLabel: TextView
     private lateinit var detailLabel: TextView
     private lateinit var button: Button
@@ -70,6 +72,10 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_APPEARANCE) {
+            if (isRunning) refreshOverlayAppearance()
+            return START_NOT_STICKY
+        }
         if (isRunning) return START_NOT_STICKY
         val data: Intent? = if (Build.VERSION.SDK_INT >= 33) {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -175,13 +181,13 @@ class OverlayService : Service() {
             background = rounded(Color.rgb(17, 36, 54), 17)
             elevation = dp(10).toFloat()
         }
-        val title = TextView(this).apply {
+        titleLabel = TextView(this).apply {
             text = "≡  每日一答"
             textSize = 13f
             setTextColor(Color.rgb(151, 197, 236))
             setPadding(0, 0, 0, dp(6))
         }
-        root.addView(title)
+        root.addView(titleLabel)
         resultLabel = TextView(this).apply {
             text = "等待获取答案"
             textSize = 21f
@@ -207,7 +213,10 @@ class OverlayService : Service() {
             layoutParams = LinearLayout.LayoutParams(dp(172), dp(47)).apply {
                 topMargin = dp(9)
             }
-            setOnClickListener { captureCurrentQuestion() }
+            setOnClickListener {
+                Appearance.tap(it)
+                captureCurrentQuestion()
+            }
         }
         root.addView(button)
 
@@ -218,7 +227,10 @@ class OverlayService : Service() {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(170, 209, 238))
             setPadding(0, dp(7), 0, dp(2))
-            setOnClickListener { toggleOcrPanel() }
+            setOnClickListener {
+                Appearance.tap(it)
+                toggleOcrPanel()
+            }
         }
         root.addView(ocrToggle)
         ocrText = TextView(this).apply {
@@ -250,7 +262,7 @@ class OverlayService : Service() {
             x = dp(16)
             y = dp(170)
         }
-        title.setOnTouchListener(object : View.OnTouchListener {
+        titleLabel.setOnTouchListener(object : View.OnTouchListener {
             private var lastX = 0f
             private var lastY = 0f
             private var initialX = 0
@@ -277,12 +289,32 @@ class OverlayService : Service() {
             }
         })
         windows.addView(root, overlayParams)
+        refreshOverlayAppearance()
+    }
+
+    private fun refreshOverlayAppearance() {
+        if (!::root.isInitialized) return
+        val c = Appearance.resolve(this)
+        root.background = rounded(c.surface, 17)
+        titleLabel.setTextColor(c.accent)
+        resultLabel.setTextColor(c.heading)
+        detailLabel.setTextColor(c.muted)
+        button.setTextColor(c.accentText)
+        button.background = rounded(c.accent, 12)
+        ocrToggle.setTextColor(c.accent)
+        ocrPanel.background = rounded(c.panel, 8)
+        ocrText.setTextColor(c.text)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        mainHandler.post { if (isRunning) refreshOverlayAppearance() }
     }
 
     private fun toggleOcrPanel() {
         val expanded = ocrPanel.visibility != View.VISIBLE
         ocrPanel.visibility = if (expanded) View.VISIBLE else View.GONE
-        ocrToggle.text = if (expanded) "收起图片理解文本 ▴" else "查看OCR识别文本 ▾"
+        ocrToggle.text = if (expanded) "收起图片理解文本 ▴" else "查看图片理解文本 ▾"
         overlayParams.width = dp(if (expanded) 312 else 198)
         windows.updateViewLayout(root, overlayParams)
     }
@@ -338,14 +370,16 @@ class OverlayService : Service() {
             key,
             config.endpoint,
             config.visionModel,
-            config.searchModel,
             config.temperature,
-            config.reasoningEffort,
+            config.searchCount,
             onVision = { parsed ->
                 mainHandler.post {
                     updateOcrDiagnostic(parsed)
-                    resultLabel.text = "DeepSeek 联网搜索中…"
+                    resultLabel.text = "DeepSeek 搜索中…"
                 }
+            },
+            onSearching = {
+                mainHandler.post { resultLabel.text = "Flash 判断中…" }
             }
         ) { result ->
             mainHandler.post {
@@ -389,6 +423,7 @@ class OverlayService : Service() {
     }
 
     companion object {
+        const val ACTION_APPEARANCE = "com.xiaoyu.weread.UPDATE_APPEARANCE"
         const val EXTRA_RESULT_CODE = "capture_result_code"
         const val EXTRA_RESULT_DATA = "capture_result_data"
         private const val CHANNEL_ID = "weread_projection"
