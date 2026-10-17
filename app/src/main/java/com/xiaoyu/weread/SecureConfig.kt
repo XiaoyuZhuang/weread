@@ -22,17 +22,22 @@ class SecureConfig(context: Context) {
         get() = prefs.getString("deepseek_vision_model", DEFAULT_VISION_MODEL) ?: DEFAULT_VISION_MODEL
         set(value) { prefs.edit().putString("deepseek_vision_model", value.trim()).apply() }
 
-    var searchModel: String
-        get() = prefs.getString("deepseek_search_model", DEFAULT_SEARCH_MODEL) ?: DEFAULT_SEARCH_MODEL
-        set(value) { prefs.edit().putString("deepseek_search_model", value.trim()).apply() }
+    var searchCount: Int
+        get() = prefs.getInt("deepseek_search_count", 5).coerceIn(3, 8)
+        set(value) { prefs.edit().putInt("deepseek_search_count", value.coerceIn(3, 8)).apply() }
+
+    var themeMode: String
+        get() = prefs.getString("appearance", "system")?.takeIf { it in THEME_OPTIONS } ?: "system"
+        set(value) { prefs.edit().putString("appearance", value).apply() }
+
+    var hapticEnabled: Boolean
+        get() = prefs.getBoolean("haptic_enabled", true)
+        set(value) { prefs.edit().putBoolean("haptic_enabled", value).apply() }
 
     var temperature: Double
         get() = Double.fromBits(prefs.getLong("deepseek_temperature", 0.2.toBits())).takeIf { it in 0.0..2.0 } ?: 0.2
         set(value) { prefs.edit().putLong("deepseek_temperature", value.coerceIn(0.0, 2.0).toBits()).apply() }
 
-    var reasoningEffort: String
-        get() = prefs.getString("deepseek_reasoning", "low")?.takeIf { it in REASONING_OPTIONS } ?: "low"
-        set(value) { prefs.edit().putString("deepseek_reasoning", value).apply() }
 
     fun saveKey(apiKey: String) {
         if (apiKey.isBlank()) {
@@ -75,8 +80,7 @@ class SecureConfig(context: Context) {
     companion object {
         const val DEFAULT_ENDPOINT = "https://api.deepseek.com"
         const val DEFAULT_VISION_MODEL = "deepseek-flash"
-        const val DEFAULT_SEARCH_MODEL = "deepseek-v4-pro"
-        val REASONING_OPTIONS = listOf("none", "low", "high", "max")
+        val THEME_OPTIONS = listOf("system", "light", "dark")
         private const val ALIAS = "weread_deepseek_api_key_v1"
     }
 }
