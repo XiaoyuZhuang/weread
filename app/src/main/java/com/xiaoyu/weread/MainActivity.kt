@@ -164,7 +164,7 @@ class MainActivity : Activity() {
         if (!saveSettings()) return
         testButton.isEnabled = false
         status.text = "正在测试 Groq API（会使用一次请求额度）…"
-        val sample = "题目：中国的首都是哪座城市？\\n选项：\\n1. 北京\\n2. 上海"
+        val sample = "题目：中国的首都是哪座城市？\n选项：\n1. 北京\n2. 上海"
         groqClient.ask(sample, config.loadKey(), config.endpoint, config.model, config.browserSearch) { result ->
             runOnUiThread {
                 if (!isDestroyed) {

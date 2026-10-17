@@ -1,9 +1,9 @@
 package com.xiaoyu.weread
 
-/** Pure Kotlin parser so the model's free-form search citations cannot be mistaken for answers. */
+/** Parses the model's final labeled answer; ignores unrelated web-search citations. */
 object AnswerParser {
-    private val countPattern = Regex("""(?im)^\\s*COUNT\\s*[:=：]\\s*([234])\\s*$""")
-    private val answerPattern = Regex("""(?im)^\\s*ANSWER\\s*[:=：]\\s*([1-4])\\s*$""")
+    private val countPattern = Regex("""(?im)^[ \t]*COUNT[ \t]*[:=：][ \t]*([234])[ \t]*$""")
+    private val answerPattern = Regex("""(?im)^[ \t]*ANSWER[ \t]*[:=：][ \t]*([1-4])[ \t]*$""")
 
     /** Returns (one-based correct index, number of actual choices). */
     fun parse(content: String): Pair<Int, Int>? {
