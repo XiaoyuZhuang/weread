@@ -6,7 +6,7 @@
 
 ## 安装和使用
 
-1. 从 [GitHub Releases · preview](https://github.com/XiaoyuZhuang/weread/releases/tag/preview) 下载签名版 `weread-release.apk`。
+1. 从 [GitHub Releases · 最新正式版](https://github.com/XiaoyuZhuang/weread/releases/latest) 下载固定签名的 `weread-release.apk`。
 2. 输入你的 **DeepSeek 官方 API Key**；一个密钥同时用于 Flash 和官方搜索。
 3. 点「开启悬浮窗」，授权悬浮窗和录制整个屏幕权限。
 4. 打开微信读书的每日一答，每道题点击悬浮窗「获取答案」。点「查看图片理解文本」可以查看 Flash 实际读出的题干和选项。
@@ -38,7 +38,7 @@
 - `WEREAD_SIGNING_KEYSTORE_BASE64`
 - `WEREAD_SIGNING_PASSWORD`
 
-每次成功运行 Android APK GitHub Actions 后，将新签名版 `weread-release.apk` 覆盖发布到 preview Release。若 Secrets 缺失，不发布未签名包。
+每次向 `main` 分支推送代码并成功完成 GitHub Actions 构建后，会按 `versionName` 发布**正式版**（如 `v0.5.2`），不是预览版。通过 [GitHub Releases 最新正式版](https://github.com/XiaoyuZhuang/weread/releases/latest) 下载 `weread-release.apk`。如需发布下一个正式版本，请先递增 `versionCode` 和 `versionName`；若 Secrets 缺失，不发布未签名包。
 
 ## 注意
 
@@ -61,3 +61,7 @@
 - 状态文字改为「等待答题」「截图中」「识图中」「搜索中」「思考中」「第 N 个」，不再显示模型或供应商名称。响应时间仍保留在无障碍描述中。
 - 调试选项保持默认关闭，仅开启后才出现图片理解文本入口。深浅色模式、震动、Flash+DeepSeek 搜索流程均不改变。
 - versionCode 9，继续使用固定签名，支持覆盖更新。
+
+## 正式版发布流程
+
+`main` 是唯一开发主分支；推送后 Actions 使用 GitHub Secrets 中的原有固定证书签名。成功后按 Android `versionName` 自动创建/更新 `vX.Y.Z` **正式 Release**，并附带 `weread-release.apk`。旧的 `preview` 预览 Release 会在新正式版成功发布后清理，避免普通用户混淆。

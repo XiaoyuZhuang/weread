@@ -3,7 +3,6 @@ name: Android APK
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -64,18 +63,35 @@ jobs:
           name: weread-release-signed-apk
           path: weread-release.apk
           if-no-files-found: error
-      - name: Publish signed APK to preview Release
+      - name: Publish official versioned Release
         if: github.ref == 'refs/heads/main' && steps.release_signing.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view preview >/dev/null 2>&1 ||
-            gh release create preview --title "WeRead 预览版" --prerelease --target main --notes "由 GitHub Actions Secrets 中固定证书签名的安装包"
-          gh release upload preview weread-release.apk --clobber
-          gh release delete-asset preview app-debug.apk --yes || true
-      - name: Publish version tag
-        if: startsWith(github.ref, 'refs/tags/v') && steps.release_signing.outputs.signed == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: weread-release.apk
-          prerelease: true
+          set -euo pipefail
+          # Use the real Android version and a normal, non-prerelease GitHub Release.
+          VERSION=$(grep 'versionName' app/build.gradle | head -1 | tr -d "'" | awk '{print $2}')
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to determine Android versionName" >&2
+            exit 1
+          fi
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" weread-release.apk --clobber
+            gh release edit "$TAG" --title "WeRead $TAG" --prerelease=false --latest
+          else
+            gh release create "$TAG" weread-release.apk \
+              --title "WeRead $TAG" \
+              --target "$GITHUB_SHA" \
+              --notes "正式版：固定签名 Android APK，可覆盖安装之前的固定签名版本。源代码位于 main 分支。" \
+              --latest
+          fi
+          echo "Official Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+      - name: Remove obsolete preview Release
+        if: github.ref == 'refs/heads/main' && steps.release_signing.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Only remove the old preview after the versioned official Release succeeds.
+          gh release delete preview --yes 2>/dev/null || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/preview" 2>/dev/null || true
