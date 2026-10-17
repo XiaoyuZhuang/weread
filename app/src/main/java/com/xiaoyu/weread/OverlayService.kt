@@ -307,7 +307,10 @@ class OverlayService : Service() {
         ocrText.setTextColor(c.text)
         val debugEnabled = SecureConfig(this).showImageDebug
         ocrToggle.visibility = if (debugEnabled) View.VISIBLE else View.GONE
-        if (!debugEnabled) ocrPanel.visibility = View.GONE
+        if (!debugEnabled) {
+            ocrPanel.visibility = View.GONE
+            ocrToggle.text = "查看图片理解文本 ▾"
+        }
         if (::windows.isInitialized) {
             overlayParams.width = dp(if (debugEnabled && ocrPanel.visibility == View.VISIBLE) 312 else 220)
             windows.updateViewLayout(root, overlayParams)
@@ -405,7 +408,7 @@ class OverlayService : Service() {
 
     private fun fail(message: String) {
         resultLabel.text = "获取失败"
-        resultLabel.text = "获取失败，点此重试"
+        resultLabel.text = "获取失败，请重试"
         resultLabel.contentDescription = message
         android.widget.Toast.makeText(this, message.take(180), android.widget.Toast.LENGTH_LONG).show()
         finishBusy()
