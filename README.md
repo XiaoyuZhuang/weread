@@ -21,9 +21,10 @@ Android 悬浮窗答题助手：**点击“获取答案” → MediaProjection �
 - model: `openai/gpt-oss-120b`
 - tools: `[{"type":"browser_search"}]`
 - tool_choice: `required`（开启时强制使用搜索工具）
-- reasoning_effort: `low`（加速知识问答）
+- reasoning_effort: 首次 `low`，仅工具调用失败后的重试提升到 `medium`
+- temperature: 首次 `0.2`，仅重试时改为 `0.1`
 
-Groq 会在服务器端完成搜索、分析和回复，无须本地浏览器或搜索 API。关闭高级设置中的联网搜索选项可以跳过搜索，但正确率可能下降。
+Groq 会在服务器端完成搜索、分析和回复，无须本地浏览器或搜索 API。遇到明确的“强制搜索但模型没有调用工具”HTTP 400，程序自动再请求一次，增强搜索指令、降低温度并将推理等级临时提高到 medium。**两次都必须使用搜索工具；不会通过关闭搜索来掩盖失败。** 其他 400、401、403、429 不自动重试；重试会多消耗一次请求额度并增加等待。关闭高级设置中的联网搜索选项可以跳过搜索，但正确率可能下降。
 
 官方文档：https://console.groq.com/docs/tool-use/built-in-tools/browser-search
 
@@ -31,6 +32,7 @@ Groq 会在服务器端完成搜索、分析和回复，无须本地浏览器或
 
 ## 常见问题
 
+- **HTTP 400（未调用搜索工具）**：仅对该报错自动重试 1 次；若仍失败会提示“联网搜索连续两次未调用成功”，不是截图或 OCR 失败。
 - **HTTP 401 / 403**：API 密钥、账户权限或搜索权限限制。
 - **HTTP 429**：触及 Groq 账户的频率或配额限制，稍后重试。
 - **模型不支持 browser_search**：使用默认 GPT-OSS 120B，或关闭联网搜索。
