@@ -60,8 +60,7 @@ class OverlayService : Service() {
     private var capturePending = false // Only accessed on capture thread.
     private var screenshot: Bitmap? = null // Only accessed on capture thread.
     private val busy = AtomicBoolean(false)
-    private val ocr = OcrEngine()
-    private val groq = GroqClient()
+    private val deepseek = DeepSeekClient()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -212,10 +211,9 @@ class OverlayService : Service() {
         }
         root.addView(button)
 
-        // Diagnostic view only; hidden by default and does not change the
-        // capture, OCR, or Groq search behavior. Text remains visible on API 400.
+        // Optional diagnostics show the text the image model extracted.
         ocrToggle = TextView(this).apply {
-            text = "查看OCR识别文本 ▾"
+            text = "查看图片理解文本 ▾"
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(170, 209, 238))
@@ -284,7 +282,7 @@ class OverlayService : Service() {
     private fun toggleOcrPanel() {
         val expanded = ocrPanel.visibility != View.VISIBLE
         ocrPanel.visibility = if (expanded) View.VISIBLE else View.GONE
-        ocrToggle.text = if (expanded) "收起OCR识别文本 ▴" else "查看OCR识别文本 ▾"
+        ocrToggle.text = if (expanded) "收起图片理解文本 ▴" else "查看OCR识别文本 ▾"
         overlayParams.width = dp(if (expanded) 312 else 198)
         windows.updateViewLayout(root, overlayParams)
     }
@@ -319,54 +317,45 @@ class OverlayService : Service() {
                     if (frame == null) {
                         updateOcrDiagnostic("截图失败：未获取到屏幕画面。请检查是否授权整个屏幕。")
                         fail("截图失败：请确保授权的是整个屏幕")
-                    } else recognize(frame)
+                    } else requestAnswer(frame)
                 }
             }, 550)
         }
     }
 
-    private fun recognize(bitmap: Bitmap) {
-        resultLabel.text = "识别文字中…"
-        updateOcrDiagnostic("已获取屏幕画面（${bitmap.width}×${bitmap.height}），正在本地OCR识别……")
-        ocr.extract(bitmap) { result ->
-            mainHandler.post {
-                result.fold(
-                    onSuccess = { text ->
-                        updateOcrDiagnostic(if (text.isBlank()) "截图成功，但OCR未识别出文字" else text)
-                        if (text.length < 8) {
-                            fail("题目文字太少，请重试")
-                        } else {
-                            requestAnswer(text)
-                        }
-                    },
-                    onFailure = {
-                        updateOcrDiagnostic("截图成功，但OCR失败：${it.message ?: "未知错误"}")
-                        fail("OCR 失败：${it.message ?: "未知错误"}")
-                    }
-                )
-            }
-        }
-    }
-
-    private fun requestAnswer(text: String) {
-        resultLabel.text = if (SecureConfig(this).browserSearch) "Groq 联网搜索中…" else "Groq 答题中…"
+    private fun requestAnswer(bitmap: Bitmap) {
         val config = SecureConfig(this)
         val key = config.loadKey()
         if (key.isBlank()) {
-            fail("API Key 为空，请返回主界面填写")
+            bitmap.recycle()
+            fail("请在主界面填写 DeepSeek API Key")
             return
         }
-        groq.ask(text, key, config.endpoint, config.model, config.browserSearch, config.tuning()) { result ->
+        resultLabel.text = "DeepSeek 图片识别中…"
+        updateOcrDiagnostic("已截取屏幕（${bitmap.width}×${bitmap.height}），正在压缩图片并发送给 DeepSeek 识别……")
+        deepseek.ask(
+            bitmap,
+            key,
+            config.endpoint,
+            config.visionModel,
+            config.searchModel,
+            config.temperature,
+            config.reasoningEffort,
+            onVision = { parsed ->
+                mainHandler.post {
+                    updateOcrDiagnostic(parsed)
+                    resultLabel.text = "DeepSeek 联网搜索中…"
+                }
+            }
+        ) { result ->
             mainHandler.post {
                 result.fold(
                     onSuccess = { answer ->
                         resultLabel.text = "第 ${answer.index} 个"
-                        detailLabel.text = buildString {
-                            append("${answer.optionCount} 选 1 · ${answer.elapsedMs} ms")
-                        }
+                        detailLabel.text = "${answer.optionCount} 选 1 · ${answer.elapsedMs} ms · 已联网"
                         finishBusy()
                     },
-                    onFailure = { fail(it.message ?: "请求失败") }
+                    onFailure = { fail(it.message ?: "DeepSeek 请求失败") }
                 )
             }
         }
@@ -395,8 +384,7 @@ class OverlayService : Service() {
         try { screenshot?.recycle() } catch (_: Exception) {}
         try { projection?.stop() } catch (_: Exception) {}
         try { captureThread?.quitSafely() } catch (_: Exception) {}
-        ocr.close()
-        groq.close()
+        deepseek.close()
         super.onDestroy()
     }
 

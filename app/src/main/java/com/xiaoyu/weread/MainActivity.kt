@@ -3,7 +3,10 @@ package com.xiaoyu.weread
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
@@ -16,30 +19,26 @@ import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
-import android.widget.ArrayAdapter
 import android.widget.TextView
 
-/** API key and one tap to start: everything else stays out of the way. */
 class MainActivity : Activity() {
     private lateinit var config: SecureConfig
     private lateinit var keyInput: EditText
     private lateinit var endpointInput: EditText
-    private lateinit var modelInput: EditText
-    private lateinit var searchToggle: CheckBox
+    private lateinit var visionInput: EditText
+    private lateinit var searchInput: EditText
     private lateinit var temperatureInput: EditText
-    private lateinit var retryTemperatureInput: EditText
     private lateinit var reasoningInput: Spinner
-    private lateinit var retryReasoningInput: Spinner
-    private lateinit var testButton: Button
-    private val groqClient = GroqClient()
     private lateinit var status: TextView
     private lateinit var toggle: Button
+    private lateinit var testButton: Button
+    private val client = DeepSeekClient()
     private var waitingForOverlayPermission = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,11 +47,10 @@ class MainActivity : Activity() {
         buildUi()
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
-    private fun background(color: Int, radius: Int): GradientDrawable =
-        GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
-
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun background(color: Int, radius: Int) = GradientDrawable().apply {
+        setColor(color); cornerRadius = dp(radius).toFloat()
+    }
     private fun field(hint: String, value: String): EditText = EditText(this).apply {
         setSingleLine(true)
         setText(value)
@@ -62,8 +60,7 @@ class MainActivity : Activity() {
         background = background(Color.WHITE, 11)
         layoutParams = LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(12) }
     }
-
-    private fun label(value: String): TextView = TextView(this).apply {
+    private fun label(value: String) = TextView(this).apply {
         text = value
         textSize = 13f
         setTextColor(Color.rgb(85, 99, 114))
@@ -71,87 +68,65 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi() {
-        val screen = ScrollView(this).apply { setBackgroundColor(Color.rgb(244, 248, 252)) }
+        val scroll = ScrollView(this).apply { setBackgroundColor(Color.rgb(244, 248, 252)) }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(44), dp(24), dp(24))
         }
-        screen.addView(content)
-        val heading = TextView(this).apply {
+        scroll.addView(content)
+        content.addView(TextView(this).apply {
             text = "微信读书 · 每日一答"
-            setTextColor(Color.rgb(22, 45, 68))
             textSize = 25f
             typeface = Typeface.DEFAULT_BOLD
-        }
-        content.addView(heading)
+            setTextColor(Color.rgb(22, 45, 68))
+        })
         content.addView(TextView(this).apply {
-            text = "点一下悬浮窗，截图识别并显示正确选项"
+            text = "截图交给 DeepSeek 看图，服务器联网搜索答案"
             textSize = 14f
             setTextColor(Color.rgb(100, 121, 139))
             setPadding(0, dp(10), 0, dp(22))
         })
-
-        content.addView(label("Groq API 密钥"))
-        keyInput = field("输入你的 API Key", config.loadKey()).apply {
+        content.addView(label("DeepSeek 官方 API Key"))
+        keyInput = field("输入 DeepSeek API Key", config.loadKey()).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         content.addView(keyInput)
-
-        val advanced = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-        }
-        val advancedButton = Button(this).apply {
-            text = "高级配置（接口 / 模型 / 联网搜索） ▾"
+        val advanced = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        content.addView(Button(this).apply {
+            text = "高级配置（接口 / 模型 / 参数） ▾"
             isAllCaps = false
             setOnClickListener {
                 advanced.visibility = if (advanced.visibility == View.GONE) View.VISIBLE else View.GONE
             }
-        }
-        content.addView(advancedButton)
-        advanced.addView(label("Groq 接口地址（HTTPS）"))
+        })
+        advanced.addView(label("DeepSeek 接口根地址（HTTPS）"))
         endpointInput = field(SecureConfig.DEFAULT_ENDPOINT, config.endpoint)
         advanced.addView(endpointInput)
-        advanced.addView(label("模型 ID"))
-        modelInput = field(SecureConfig.DEFAULT_MODEL, config.model)
-        advanced.addView(modelInput)
-        searchToggle = CheckBox(this).apply {
-            text = "开启联网搜索（默认开启）"
-            isChecked = config.browserSearch
-            textSize = 15f
-            setTextColor(Color.rgb(37, 59, 80))
-        }
-        advanced.addView(searchToggle)
-        advanced.addView(label("温度（0～2，默认 0.2）"))
+        advanced.addView(label("图片理解模型"))
+        visionInput = field(SecureConfig.DEFAULT_VISION_MODEL, config.visionModel)
+        advanced.addView(visionInput)
+        advanced.addView(label("联网搜索模型"))
+        searchInput = field(SecureConfig.DEFAULT_SEARCH_MODEL, config.searchModel)
+        advanced.addView(searchInput)
+        advanced.addView(label("图片识别温度（0～2）"))
         temperatureInput = field("0.2", config.temperature.toString()).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
         advanced.addView(temperatureInput)
-        advanced.addView(label("自动重试温度（默认 0.1）"))
-        retryTemperatureInput = field("0.1", config.retryTemperature.toString()).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        advanced.addView(label("联网搜索推理等级"))
+        reasoningInput = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, SecureConfig.REASONING_OPTIONS)
+            setSelection(SecureConfig.REASONING_OPTIONS.indexOf(config.reasoningEffort).coerceAtLeast(0))
         }
-        advanced.addView(retryTemperatureInput)
-        fun reasoningSelector(initial: String): Spinner = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item, SecureConfig.REASONING_OPTIONS)
-            setSelection(SecureConfig.REASONING_OPTIONS.indexOf(initial).coerceAtLeast(0))
-        }
-        advanced.addView(label("推理等级（默认 low）"))
-        reasoningInput = reasoningSelector(config.reasoningEffort)
         advanced.addView(reasoningInput)
-        advanced.addView(label("自动重试推理等级（默认 medium）"))
-        retryReasoningInput = reasoningSelector(config.retryReasoningEffort)
-        advanced.addView(retryReasoningInput)
+        advanced.addView(label("联网搜索始终开启；无真实搜索结果不会显示答案"))
         content.addView(advanced)
-
         testButton = Button(this).apply {
-            text = "测试 API（验证密钥、模型和联网搜索）"
+            text = "测试 API（看图 + 联网搜索）"
             isAllCaps = false
             setOnClickListener { testApi() }
         }
         content.addView(testButton)
-
         toggle = Button(this).apply {
             isAllCaps = false
             textSize = 18f
@@ -162,9 +137,7 @@ class MainActivity : Activity() {
                 if (OverlayService.isRunning) {
                     stopService(Intent(this@MainActivity, OverlayService::class.java))
                     Handler(Looper.getMainLooper()).postDelayed({ refreshState() }, 200)
-                } else {
-                    saveAndStart()
-                }
+                } else saveAndStart()
             }
         }
         content.addView(toggle)
@@ -176,31 +149,68 @@ class MainActivity : Activity() {
         }
         content.addView(status)
         content.addView(TextView(this).apply {
-            text = "首次开启需要授权“显示在其他应用上层”和“录制屏幕”。\n" +
-                "屏幕内容只在本机进行 OCR，之后仅将识别出的文字发送给配置的 Groq 接口。\n" +
-                "请在屏幕录制授权时选择“整个屏幕”。"
+            text = "首次开启需授权悬浮窗和录制整个屏幕；截图在本机压缩成 JPEG，然后发送给 DeepSeek 官方 API。图片可能包含个人信息，请注意屏幕内容。"
             textSize = 13f
-            setLineSpacing(dp(4).toFloat(), 1f)
             setTextColor(Color.rgb(105, 122, 140))
         })
-        setContentView(screen)
+        setContentView(scroll)
         refreshState()
+    }
+
+    private fun saveSettings(): Boolean {
+        if (keyInput.text.isNullOrBlank()) {
+            status.text = "请先填写 DeepSeek API Key"
+            return false
+        }
+        val endpoint = endpointInput.text.toString().trim()
+        if (!endpoint.startsWith("https://", true)) {
+            status.text = "接口地址必须为 HTTPS"
+            return false
+        }
+        if (visionInput.text.isNullOrBlank() || searchInput.text.isNullOrBlank()) {
+            status.text = "请填写图片模型和联网模型"
+            return false
+        }
+        val temperature = temperatureInput.text.toString().toDoubleOrNull()
+        if (temperature == null || temperature !in 0.0..2.0) {
+            status.text = "温度需在 0～2 之间"
+            return false
+        }
+        try {
+            config.saveKey(keyInput.text.toString())
+            config.endpoint = endpoint
+            config.visionModel = visionInput.text.toString()
+            config.searchModel = searchInput.text.toString()
+            config.temperature = temperature
+            config.reasoningEffort = reasoningInput.selectedItem.toString()
+        } catch (_: Exception) {
+            status.text = "密钥保存失败，请检查设备安全设置"
+            return false
+        }
+        return true
     }
 
     private fun testApi() {
         if (!saveSettings()) return
         testButton.isEnabled = false
-        status.text = "正在测试 Groq API（会使用一次请求额度）…"
-        val sample = "题目：中国的首都是哪座城市？\n选项：\n1. 北京\n2. 上海"
-        groqClient.ask(sample, config.loadKey(), config.endpoint, config.model, config.browserSearch, config.tuning()) { result ->
+        status.text = "正在测试图片识别和服务器端联网搜索（消耗 API 额度）…"
+        val bitmap = Bitmap.createBitmap(780, 520, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.rgb(9, 38, 71))
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 42f }
+        canvas.drawText("中国的首都是哪里？", 48f, 120f, paint)
+        canvas.drawText("北京", 80f, 260f, paint)
+        canvas.drawText("上海", 80f, 380f, paint)
+        client.ask(bitmap, config.loadKey(), config.endpoint, config.visionModel, config.searchModel,
+            config.temperature, config.reasoningEffort, onVision = {}) { result ->
             runOnUiThread {
                 if (!isDestroyed) {
                     testButton.isEnabled = true
                     result.fold(
                         onSuccess = { answer ->
                             status.text = if (answer.index == 1)
-                                "测试成功 · 第1项 · ${answer.elapsedMs} ms"
-                            else "API 连通，但测试题回答异常（第${answer.index}项）"
+                                "两阶段测试通过 · 已联网 · ${answer.elapsedMs} ms"
+                            else "API 已连接，但测试答案不符：第 ${answer.index} 项"
                         },
                         onFailure = { status.text = "测试失败：${it.message ?: "未知错误"}" }
                     )
@@ -209,52 +219,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveSettings(): Boolean {
-        val key = keyInput.text.toString().trim()
-        if (key.isBlank()) {
-            status.text = "请先填写 Groq API Key"
-            return false
-        }
-        val endpoint = endpointInput.text.toString().trim()
-        if (!endpoint.startsWith("https://", true)) {
-            status.text = "接口地址必须以 https:// 开头"
-            return false
-        }
-        if (modelInput.text.isNullOrBlank()) {
-            status.text = "请填写模型 ID"
-            return false
-        }
-        val temperature = temperatureInput.text.toString().toDoubleOrNull()
-        val retryTemperature = retryTemperatureInput.text.toString().toDoubleOrNull()
-        if (temperature == null || temperature !in 0.0..2.0 ||
-            retryTemperature == null || retryTemperature !in 0.0..2.0) {
-            status.text = "温度必须在 0～2 之间"
-            return false
-        }
-        try {
-            config.temperature = temperature
-            config.retryTemperature = retryTemperature
-            config.reasoningEffort = reasoningInput.selectedItem.toString()
-            config.retryReasoningEffort = retryReasoningInput.selectedItem.toString()
-            config.saveKey(key)
-            config.endpoint = endpoint
-            config.model = modelInput.text.toString().trim()
-            config.browserSearch = searchToggle.isChecked
-        } catch (_: Exception) {
-            status.text = "无法安全保存密钥，请检查设备锁屏安全设置"
-            return false
-        }
-        return true
-    }
-
     private fun saveAndStart() {
         if (!saveSettings()) return
-
         if (!Settings.canDrawOverlays(this)) {
             waitingForOverlayPermission = true
-            status.text = "请允许显示在其他应用上层"
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")))
+            status.text = "请授权悬浮窗权限"
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
         requestScreenCapture()
@@ -273,16 +243,16 @@ class MainActivity : Activity() {
 
     private fun requestScreenCapture() {
         val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        status.text = "请授权屏幕录制（选择整个屏幕）"
+        status.text = "请授权录制整个屏幕"
         startActivityForResult(mgr.createScreenCaptureIntent(), REQUEST_CAPTURE)
     }
 
-    @Deprecated("Old Activity result API works from API 26 onward.")
+    @Deprecated("Compatible with Android 8 through current SDK.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_CAPTURE) return
         if (resultCode != RESULT_OK || data == null) {
-            status.text = "未获得录屏权限，无法截图"
+            status.text = "屏幕捕获未授权"
             return
         }
         val service = Intent(this, OverlayService::class.java).apply {
@@ -290,9 +260,8 @@ class MainActivity : Activity() {
             putExtra(OverlayService.EXTRA_RESULT_DATA, data)
         }
         try {
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service)
-            else startService(service)
-            status.text = "悬浮窗启动中，切换到微信读书即可使用"
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
+            status.text = "悬浮窗启动中…"
             Handler(Looper.getMainLooper()).postDelayed({ refreshState() }, 900)
         } catch (error: Exception) {
             status.text = "启动失败：${error.message ?: "系统限制"}"
@@ -301,11 +270,11 @@ class MainActivity : Activity() {
 
     private fun refreshState() {
         toggle.text = if (OverlayService.isRunning) "关闭悬浮窗" else "开启悬浮窗"
-        if (OverlayService.isRunning) status.text = "已开启 · 请切换到微信读书"
+        if (OverlayService.isRunning) status.text = "已开启，请切换微信读书"
     }
 
     override fun onDestroy() {
-        groqClient.close()
+        client.close()
         super.onDestroy()
     }
 
