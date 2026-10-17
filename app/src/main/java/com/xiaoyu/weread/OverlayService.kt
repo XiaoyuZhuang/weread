@@ -356,7 +356,7 @@ class OverlayService : Service() {
             fail("API Key 为空，请返回主界面填写")
             return
         }
-        groq.ask(text, key, config.endpoint, config.model, config.browserSearch) { result ->
+        groq.ask(text, key, config.endpoint, config.model, config.browserSearch, config.tuning()) { result ->
             mainHandler.post {
                 result.fold(
                     onSuccess = { answer ->

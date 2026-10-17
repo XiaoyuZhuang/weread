@@ -30,6 +30,24 @@ class SecureConfig(context: Context) {
         get() = prefs.getBoolean("groq_browser_search", true)
         set(value) { prefs.edit().putBoolean("groq_browser_search", value).apply() }
 
+    var temperature: Double
+        get() = Double.fromBits(prefs.getLong("groq_temperature", 0.2.toBits())).takeIf { it in 0.0..2.0 } ?: 0.2
+        set(value) { prefs.edit().putLong("groq_temperature", value.coerceIn(0.0, 2.0).toBits()).apply() }
+
+    var retryTemperature: Double
+        get() = Double.fromBits(prefs.getLong("groq_retry_temperature", 0.1.toBits())).takeIf { it in 0.0..2.0 } ?: 0.1
+        set(value) { prefs.edit().putLong("groq_retry_temperature", value.coerceIn(0.0, 2.0).toBits()).apply() }
+
+    var reasoningEffort: String
+        get() = prefs.getString("groq_reasoning", "low")?.takeIf { it in REASONING_OPTIONS } ?: "low"
+        set(value) { prefs.edit().putString("groq_reasoning", value).apply() }
+
+    var retryReasoningEffort: String
+        get() = prefs.getString("groq_retry_reasoning", "medium")?.takeIf { it in REASONING_OPTIONS } ?: "medium"
+        set(value) { prefs.edit().putString("groq_retry_reasoning", value).apply() }
+
+    fun tuning() = GroqTuning(temperature, retryTemperature, reasoningEffort, retryReasoningEffort)
+
     fun saveKey(apiKey: String) {
         if (apiKey.isBlank()) {
             prefs.edit().remove("groq_key_cipher").remove("groq_key_iv").apply()
@@ -79,6 +97,7 @@ class SecureConfig(context: Context) {
     companion object {
         const val DEFAULT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
         const val DEFAULT_MODEL = "openai/gpt-oss-120b"
+        val REASONING_OPTIONS = listOf("low", "medium", "high")
         private const val ALIAS = "weread_jev_api_key_v1" // Device-bound AES key also protects Groq key
     }
 }

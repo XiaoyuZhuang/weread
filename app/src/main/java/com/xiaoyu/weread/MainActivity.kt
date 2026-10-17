@@ -21,6 +21,8 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.ArrayAdapter
 import android.widget.TextView
 
 /** API key and one tap to start: everything else stays out of the way. */
@@ -30,6 +32,10 @@ class MainActivity : Activity() {
     private lateinit var endpointInput: EditText
     private lateinit var modelInput: EditText
     private lateinit var searchToggle: CheckBox
+    private lateinit var temperatureInput: EditText
+    private lateinit var retryTemperatureInput: EditText
+    private lateinit var reasoningInput: Spinner
+    private lateinit var retryReasoningInput: Spinner
     private lateinit var testButton: Button
     private val groqClient = GroqClient()
     private lateinit var status: TextView
@@ -116,6 +122,27 @@ class MainActivity : Activity() {
             setTextColor(Color.rgb(37, 59, 80))
         }
         advanced.addView(searchToggle)
+        advanced.addView(label("温度（0～2，默认 0.2）"))
+        temperatureInput = field("0.2", config.temperature.toString()).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        advanced.addView(temperatureInput)
+        advanced.addView(label("自动重试温度（默认 0.1）"))
+        retryTemperatureInput = field("0.1", config.retryTemperature.toString()).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        advanced.addView(retryTemperatureInput)
+        fun reasoningSelector(initial: String): Spinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item, SecureConfig.REASONING_OPTIONS)
+            setSelection(SecureConfig.REASONING_OPTIONS.indexOf(initial).coerceAtLeast(0))
+        }
+        advanced.addView(label("推理等级（默认 low）"))
+        reasoningInput = reasoningSelector(config.reasoningEffort)
+        advanced.addView(reasoningInput)
+        advanced.addView(label("自动重试推理等级（默认 medium）"))
+        retryReasoningInput = reasoningSelector(config.retryReasoningEffort)
+        advanced.addView(retryReasoningInput)
         content.addView(advanced)
 
         testButton = Button(this).apply {
@@ -165,7 +192,7 @@ class MainActivity : Activity() {
         testButton.isEnabled = false
         status.text = "正在测试 Groq API（会使用一次请求额度）…"
         val sample = "题目：中国的首都是哪座城市？\n选项：\n1. 北京\n2. 上海"
-        groqClient.ask(sample, config.loadKey(), config.endpoint, config.model, config.browserSearch) { result ->
+        groqClient.ask(sample, config.loadKey(), config.endpoint, config.model, config.browserSearch, config.tuning()) { result ->
             runOnUiThread {
                 if (!isDestroyed) {
                     testButton.isEnabled = true
@@ -197,7 +224,18 @@ class MainActivity : Activity() {
             status.text = "请填写模型 ID"
             return false
         }
+        val temperature = temperatureInput.text.toString().toDoubleOrNull()
+        val retryTemperature = retryTemperatureInput.text.toString().toDoubleOrNull()
+        if (temperature == null || temperature !in 0.0..2.0 ||
+            retryTemperature == null || retryTemperature !in 0.0..2.0) {
+            status.text = "温度必须在 0～2 之间"
+            return false
+        }
         try {
+            config.temperature = temperature
+            config.retryTemperature = retryTemperature
+            config.reasoningEffort = reasoningInput.selectedItem.toString()
+            config.retryReasoningEffort = retryReasoningInput.selectedItem.toString()
             config.saveKey(key)
             config.endpoint = endpoint
             config.model = modelInput.text.toString().trim()
