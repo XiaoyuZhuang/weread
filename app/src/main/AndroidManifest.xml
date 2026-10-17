@@ -10,6 +10,8 @@
     <application
         android:allowBackup="false"
         android:label="微信读书每日一答"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity

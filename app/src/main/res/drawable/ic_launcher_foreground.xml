@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Teal book shadows -->
+    <path android:fillColor="#28C9D8"
+        android:pathData="M54,82 C44,77 35,77 25,79 L25,54 C36,50 47,54 54,60 Z
+                          M54,82 C64,77 73,77 83,79 L83,54 C72,50 61,54 54,60 Z"/>
+    <!-- The two open pages -->
+    <path android:fillColor="#F5FDFF"
+        android:pathData="M54,77 C46,72 36,70 29,72 L29,51 C39,48 48,51 54,57 Z"/>
+    <path android:fillColor="#DDF8FF"
+        android:pathData="M54,77 C62,72 72,70 79,72 L79,51 C69,48 60,51 54,57 Z"/>
+    <!-- Minimal question mark -->
+    <path android:pathData="M47,35 C47,28 52,25 58,25 C65,25 68,30 67,36 C66,40 61,43 57,46"
+        android:strokeColor="#FFFFFF" android:strokeWidth="5.7"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"/>
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M57,48 C58.7,48 60,49.3 60,51 C60,52.7 58.7,54 57,54 C55.3,54 54,52.7 54,51 C54,49.3 55.3,48 57,48 Z"/>
+    <!-- Correct-answer badge -->
+    <path android:fillColor="#17CAAF"
+        android:pathData="M75,61 C81.7,61 87,66.3 87,73 C87,79.7 81.7,85 75,85 C68.3,85 63,79.7 63,73 C63,66.3 68.3,61 75,61 Z"/>
+    <path android:pathData="M69,73 L73,77 L81,67"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4.4"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"/>
+</vector>
