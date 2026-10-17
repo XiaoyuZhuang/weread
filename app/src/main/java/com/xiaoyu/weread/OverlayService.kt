@@ -56,7 +56,7 @@ class OverlayService : Service() {
     private var screenshot: Bitmap? = null // Only accessed on capture thread.
     private val busy = AtomicBoolean(false)
     private val ocr = OcrEngine()
-    private val jev = JevClient()
+    private val groq = GroqClient()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -291,21 +291,20 @@ class OverlayService : Service() {
     }
 
     private fun requestAnswer(text: String) {
-        resultLabel.text = "Jev 答题中…"
+        resultLabel.text = if (SecureConfig(this).browserSearch) "Groq 联网搜索中…" else "Groq 答题中…"
         val config = SecureConfig(this)
         val key = config.loadKey()
         if (key.isBlank()) {
             fail("API Key 为空，请返回主界面填写")
             return
         }
-        jev.ask(text, key, config.endpoint, config.model, config.optionCount) { result ->
+        groq.ask(text, key, config.endpoint, config.model, config.browserSearch) { result ->
             mainHandler.post {
                 result.fold(
                     onSuccess = { answer ->
                         resultLabel.text = "第 ${answer.index} 个"
                         detailLabel.text = buildString {
-                            append("用时 ${answer.elapsedMs} ms")
-                            answer.confidence?.let { append(" · 置信度 ${(it * 100).toInt()}%") }
+                            append("${answer.optionCount} 选 1 · ${answer.elapsedMs} ms")
                         }
                         finishBusy()
                     },
@@ -339,7 +338,7 @@ class OverlayService : Service() {
         try { projection?.stop() } catch (_: Exception) {}
         try { captureThread?.quitSafely() } catch (_: Exception) {}
         ocr.close()
-        jev.close()
+        groq.close()
         super.onDestroy()
     }
 

@@ -17,6 +17,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -28,7 +29,9 @@ class MainActivity : Activity() {
     private lateinit var keyInput: EditText
     private lateinit var endpointInput: EditText
     private lateinit var modelInput: EditText
-    private lateinit var countInput: EditText
+    private lateinit var searchToggle: CheckBox
+    private lateinit var testButton: Button
+    private val groqClient = GroqClient()
     private lateinit var status: TextView
     private lateinit var toggle: Button
     private var waitingForOverlayPermission = false
@@ -82,7 +85,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(10), 0, dp(22))
         })
 
-        content.addView(label("Jev API 密钥"))
+        content.addView(label("Groq API 密钥"))
         keyInput = field("输入你的 API Key", config.loadKey()).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
@@ -93,25 +96,34 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         val advancedButton = Button(this).apply {
-            text = "高级配置（接口 / 模型 / 选项数） ▾"
+            text = "高级配置（接口 / 模型 / 联网搜索） ▾"
             isAllCaps = false
             setOnClickListener {
                 advanced.visibility = if (advanced.visibility == View.GONE) View.VISIBLE else View.GONE
             }
         }
         content.addView(advancedButton)
-        advanced.addView(label("Jev 接口地址（HTTPS）"))
-        endpointInput = field("https://…/systemone/", config.endpoint)
+        advanced.addView(label("Groq 接口地址（HTTPS）"))
+        endpointInput = field(SecureConfig.DEFAULT_ENDPOINT, config.endpoint)
         advanced.addView(endpointInput)
         advanced.addView(label("模型 ID"))
-        modelInput = field("jev-1.13", config.model)
+        modelInput = field(SecureConfig.DEFAULT_MODEL, config.model)
         advanced.addView(modelInput)
-        advanced.addView(label("每题选项数量（2 到 4，默认 2）"))
-        countInput = field("2", config.optionCount.toString()).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER
+        searchToggle = CheckBox(this).apply {
+            text = "开启联网搜索（默认开启）"
+            isChecked = config.browserSearch
+            textSize = 15f
+            setTextColor(Color.rgb(37, 59, 80))
         }
-        advanced.addView(countInput)
+        advanced.addView(searchToggle)
         content.addView(advanced)
+
+        testButton = Button(this).apply {
+            text = "测试 API（验证密钥、模型和联网搜索）"
+            isAllCaps = false
+            setOnClickListener { testApi() }
+        }
+        content.addView(testButton)
 
         toggle = Button(this).apply {
             isAllCaps = false
@@ -138,7 +150,7 @@ class MainActivity : Activity() {
         content.addView(status)
         content.addView(TextView(this).apply {
             text = "首次开启需要授权“显示在其他应用上层”和“录制屏幕”。\n" +
-                "屏幕内容只在本机进行 OCR，之后仅将识别出的文字发送给配置的 Jev 接口。\n" +
+                "屏幕内容只在本机进行 OCR，之后仅将识别出的文字发送给配置的 Groq 接口。\n" +
                 "请在屏幕录制授权时选择“整个屏幕”。"
             textSize = 13f
             setLineSpacing(dp(4).toFloat(), 1f)
@@ -148,31 +160,57 @@ class MainActivity : Activity() {
         refreshState()
     }
 
-    private fun saveAndStart() {
+    private fun testApi() {
+        if (!saveSettings()) return
+        testButton.isEnabled = false
+        status.text = "正在测试 Groq API（会使用一次请求额度）…"
+        val sample = "题目：中国的首都是哪座城市？\\n选项：\\n1. 北京\\n2. 上海"
+        groqClient.ask(sample, config.loadKey(), config.endpoint, config.model, config.browserSearch) { result ->
+            runOnUiThread {
+                if (!isDestroyed) {
+                    testButton.isEnabled = true
+                    result.fold(
+                        onSuccess = { answer ->
+                            status.text = if (answer.index == 1)
+                                "测试成功 · 第1项 · ${answer.elapsedMs} ms"
+                            else "API 连通，但测试题回答异常（第${answer.index}项）"
+                        },
+                        onFailure = { status.text = "测试失败：${it.message ?: "未知错误"}" }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun saveSettings(): Boolean {
         val key = keyInput.text.toString().trim()
         if (key.isBlank()) {
-            status.text = "请先填写 API Key"
-            return
+            status.text = "请先填写 Groq API Key"
+            return false
         }
         val endpoint = endpointInput.text.toString().trim()
         if (!endpoint.startsWith("https://", true)) {
             status.text = "接口地址必须以 https:// 开头"
-            return
+            return false
         }
-        val count = countInput.text.toString().toIntOrNull()
-        if (count == null || count !in 2..4) {
-            status.text = "选项数量请填写 2、3 或 4"
-            return
+        if (modelInput.text.isNullOrBlank()) {
+            status.text = "请填写模型 ID"
+            return false
         }
         try {
             config.saveKey(key)
             config.endpoint = endpoint
-            config.model = modelInput.text.toString().trim().ifEmpty { "jev-1.13" }
-            config.optionCount = count
+            config.model = modelInput.text.toString().trim()
+            config.browserSearch = searchToggle.isChecked
         } catch (_: Exception) {
             status.text = "无法安全保存密钥，请检查设备锁屏安全设置"
-            return
+            return false
         }
+        return true
+    }
+
+    private fun saveAndStart() {
+        if (!saveSettings()) return
 
         if (!Settings.canDrawOverlays(this)) {
             waitingForOverlayPermission = true
@@ -226,6 +264,11 @@ class MainActivity : Activity() {
     private fun refreshState() {
         toggle.text = if (OverlayService.isRunning) "关闭悬浮窗" else "开启悬浮窗"
         if (OverlayService.isRunning) status.text = "已开启 · 请切换到微信读书"
+    }
+
+    override fun onDestroy() {
+        groqClient.close()
+        super.onDestroy()
     }
 
     companion object { private const val REQUEST_CAPTURE = 1027 }

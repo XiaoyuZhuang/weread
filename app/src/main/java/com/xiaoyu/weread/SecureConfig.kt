@@ -19,34 +19,34 @@ class SecureConfig(context: Context) {
     private val prefs = context.getSharedPreferences("weread_config", Context.MODE_PRIVATE)
 
     var endpoint: String
-        get() = prefs.getString("endpoint", DEFAULT_ENDPOINT) ?: DEFAULT_ENDPOINT
-        set(value) { prefs.edit().putString("endpoint", value.trim()).apply() }
+        get() = prefs.getString("groq_endpoint", DEFAULT_ENDPOINT) ?: DEFAULT_ENDPOINT
+        set(value) { prefs.edit().putString("groq_endpoint", value.trim()).apply() }
 
     var model: String
-        get() = prefs.getString("model", "jev-1.13") ?: "jev-1.13"
-        set(value) { prefs.edit().putString("model", value.trim()).apply() }
+        get() = prefs.getString("groq_model", DEFAULT_MODEL) ?: DEFAULT_MODEL
+        set(value) { prefs.edit().putString("groq_model", value.trim()).apply() }
 
-    var optionCount: Int
-        get() = prefs.getInt("optionCount", 2).coerceIn(2, 4)
-        set(value) { prefs.edit().putInt("optionCount", value.coerceIn(2, 4)).apply() }
+    var browserSearch: Boolean
+        get() = prefs.getBoolean("groq_browser_search", true)
+        set(value) { prefs.edit().putBoolean("groq_browser_search", value).apply() }
 
     fun saveKey(apiKey: String) {
         if (apiKey.isBlank()) {
-            prefs.edit().remove("key_cipher").remove("key_iv").apply()
+            prefs.edit().remove("groq_key_cipher").remove("groq_key_iv").apply()
             return
         }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = cipher.doFinal(apiKey.trim().toByteArray(Charsets.UTF_8))
         prefs.edit()
-            .putString("key_cipher", Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .putString("key_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString("groq_key_cipher", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString("groq_key_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .apply()
     }
 
     fun loadKey(): String {
-        val ciphertext = prefs.getString("key_cipher", null) ?: return ""
-        val iv = prefs.getString("key_iv", null) ?: return ""
+        val ciphertext = prefs.getString("groq_key_cipher", null) ?: return ""
+        val iv = prefs.getString("groq_key_iv", null) ?: return ""
         return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(
@@ -77,7 +77,8 @@ class SecureConfig(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_ENDPOINT = "https://jev-ai.org/api/v1/systemone/"
-        private const val ALIAS = "weread_jev_api_key_v1"
+        const val DEFAULT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+        const val DEFAULT_MODEL = "openai/gpt-oss-120b"
+        private const val ALIAS = "weread_jev_api_key_v1" // Device-bound AES key also protects Groq key
     }
 }

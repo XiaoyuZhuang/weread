@@ -1,65 +1,50 @@
 # WeRead · 微信读书每日一答
 
-Android 悬浮窗答题助手：**点击“获取答案” → MediaProjection 截屏 → ML Kit 中文 OCR（本地）→ Jev SystemOne Choice API → 显示第几个选项**。不自动点击答案。
+Android 悬浮窗答题助手：**点击“获取答案” → MediaProjection 截屏 → ML Kit 中文 OCR（本地）→ Groq GPT-OSS + 服务器端网页搜索 → 显示答案序号**。不自动点击答案。
 
-## 安装
+## 安装与使用
 
-在 [Releases](https://github.com/XiaoyuZhuang/weread/releases/tag/preview) 下载 `app-debug.apk`。仓库每次推送都会使用 GitHub Actions 编译 Android APK，Actions 同时保存构建产物。当前为测试版，GitHub Actions 默认 debug 签名可能因构建环境不同而变化，遇到覆盖安装提示证书不同请先备份需要的数据再卸载旧版。
+1. 前往 [预览版 Release](https://github.com/XiaoyuZhuang/weread/releases/tag/preview) 下载 `app-debug.apk`。
+2. 前往 [Groq 控制台](https://console.groq.com/keys) 创建 API Key。回到软件填写密钥。**注意 Groq 不是 xAI 的 Grok。**
+3. 默认已经配置了 `openai/gpt-oss-120b`、Groq 官方 Chat Completions API 地址，并开启联网搜索。
+4. 点击开启悬浮窗，授权悬浮窗和「录制整个屏幕」权限。
+5. 打开微信读书每日一答，每题点击悬浮窗「获取答案」，等待「第 1 个 / 第 2 个」等结果。程序自动区分2选1/4选1（不确定时按4个）。
+6. 可以先在主界面点击「测试 API」，验证密钥、模型以及联网搜索能力。
 
-## 使用
+截图只在本机通过 ML Kit 做 OCR，向 Groq 上传的是 OCR **文字**，不是图片。确保画面中没有不希望传输的私人信息。API Key 由 Android Keystore AES-GCM 加密保存在设备上。升级后需重新填写 **Groq** 密钥：旧版的 Jev 密钥不复用。
 
-1. 打开软件，输入 Jev API Key。如果所用 Jev API 不是默认服务，展开“高级配置”修改**接口地址、模型名、选项数量**（2–4，默认 2）。
-2. 点击“开启悬浮窗”，授权“显示在其他应用上层”，再授权屏幕录制。Android 14/15 必须选择**整个屏幕**，否则切换到微信读书可能无法捕获画面。
-3. 打开微信读书每日一答，看到题目点击悬浮窗的“获取答案”。
-4. 等待显示 **第 1 个 / 第 2 个**（按截图从上到下），自行点击对应选项。
-5. 拖动浮窗标题栏可以移动悬浮窗；回到主界面可关闭录屏和悬浮窗。
+## 服务器端浏览器搜索
 
-截图仅在设备上通过 ML Kit 进行 OCR。上传到模型的只有识别的文字（包含截图中被 OCR 识别出的任何敏感文字，务必确保屏幕没有个人信息），而非图片。API Key 由 Android Keystore AES-GCM 加密保存在本机，不上传到 GitHub。请仅使用你信任的 HTTPS 服务地址。
+默认调用：
+- POST `https://api.groq.com/openai/v1/chat/completions`
+- model: `openai/gpt-oss-120b`
+- tools: `[{"type":"browser_search"}]`
+- tool_choice: `required`（开启时强制使用搜索工具）
+- reasoning_effort: `low`（加速知识问答）
 
-## Jev API
+Groq 会在服务器端完成搜索、分析和回复，无须本地浏览器或搜索 API。关闭高级设置中的联网搜索选项可以跳过搜索，但正确率可能下降。
 
-默认使用文档中提供的兼容实现：
-`POST https://jev-ai.org/api/v1/systemone/`，模型 `jev-1.13`。
+官方文档：https://console.groq.com/docs/tool-use/built-in-tools/browser-search
 
-它是 Jev 的**决策**接口，不是 `/v1/chat/completions`。程序发送：
+模型提示必须返回两行：`COUNT=2` 和 `ANSWER=1`（仅为示例）。程序校验答案编号不超过识别选项数量。**不能保证模型总能正确识别2或4个选项；也不能保证正确率。**
 
-```json
-{
-  "model": "jev-1.13",
-  "state": "OCR 逐行文本（保留从上到下顺序）...",
-  "questions": {
-    "answer": {
-      "type": "choice",
-      "instructions": "从题目和选项中选择正确答案",
-      "criteria": {
-        "1": "截图里从上到下第1个真正的答题选项",
-        "2": "截图里从上到下第2个真正的答题选项"
-      }
-    }
-  }
-}
-```
+## 常见问题
 
-读取 `answers.answer.choice`。其他 Jev 服务可能使用 `/v1/systemone` 或其他 API 路径，需要在软件高级设置里匹配正确地址。**只有 API 与上述 JSON 协议相容才可以直接用**。
+- **HTTP 401 / 403**：API 密钥、账户权限或搜索权限限制。
+- **HTTP 429**：触及 Groq 账户的频率或配额限制，稍后重试。
+- **模型不支持 browser_search**：使用默认 GPT-OSS 120B，或关闭联网搜索。
+- **请求耗时长**：真实网页搜索可能花费数秒乃至更久；已设置 45 秒读取超时。
+- **API 测试失败**：先在主界面点击「测试 API」观察明确错误码，检查 API 密钥。
+- **Android 无法截图**：检查是否授权了**整个屏幕**、是否被系统禁止录屏。
+- **无法覆盖安装**：预览版通过 GitHub Actions 默认 debug 签名构建，不同运行可能出现签名不同，请先备份自己的数据再卸载旧版。
+- **旧版配置**：原 Jev 密钥和接口参数不会自动迁移，避免误发到错误服务。
 
-### 已知限制
+尚未在真实手机上完成整条流程的验证；GitHub Actions 仅验证编译。测试 API 会实际发起一次带搜索的请求并占用使用额度。
 
-- Jev 适合对选项作快速分类决策，但不是通用知识问答模型；对文学、历史等事实题的正确率并无保证。“置信度”不等于真实正确率。
-- OCR 行顺序和题目布局可能误判，尤其是包含长选项、插图、或与常见模板不同的题目；不支持看图答题。
-- 部分 App/安全页面禁止系统截屏，此时无法识别。
-- 录屏权限仅在本次启动会话内有效。Android 14+ 每次重新开启需经系统授权；不会后台静默录屏。Android 的前台服务通知是必需的。
-- 测试版尚未在真实手机上完成端到端验证；使用时请留意接口/系统版本兼容性。
+## 项目
 
-## 技术栈
+Kotlin · Android 8.0+ · MediaProjection · TYPE_APPLICATION_OVERLAY · ML Kit 中文 OCR · Android Keystore · Groq API。
 
-Kotlin · Android 8.0+ · MediaProjection · TYPE_APPLICATION_OVERLAY · ML Kit 中文 OCR · Android Keystore · Jev Choice API。没有无障碍点击操作。
+## 编译
 
-## 构建
-
-JDK 17 + Android SDK 35 + Gradle 8.10.2：
-
-```bash
-gradle assembleDebug
-```
-
-APK 生成位置：`app/build/outputs/apk/debug/app-debug.apk`。
+JDK 17、Android SDK 35、Gradle 8.10.2：`gradle assembleDebug`，生成 `app/build/outputs/apk/debug/app-debug.apk`。
