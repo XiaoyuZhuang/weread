@@ -48,7 +48,6 @@ class OverlayService : Service() {
     private lateinit var overlayParams: WindowManager.LayoutParams
     private lateinit var titleLabel: TextView
     private lateinit var resultLabel: TextView
-    private lateinit var detailLabel: TextView
     private lateinit var button: Button
     private lateinit var ocrToggle: TextView
     private lateinit var ocrPanel: ScrollView
@@ -175,43 +174,49 @@ class OverlayService : Service() {
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
 
     private fun showOverlay() {
+        // Normal mode occupies exactly two rows: draggable status and action.
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), dp(10), dp(13), dp(11))
-            background = rounded(Color.rgb(17, 36, 54), 17)
+            setPadding(dp(9), dp(7), dp(9), dp(9))
             elevation = dp(10).toFloat()
         }
-        titleLabel = TextView(this).apply {
-            text = "≡  每日一答"
-            textSize = 13f
-            setTextColor(Color.rgb(151, 197, 236))
-            setPadding(0, 0, 0, dp(6))
+        val firstRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(34)
         }
-        root.addView(titleLabel)
+        titleLabel = TextView(this).apply {
+            text = "⠿"
+            textSize = 22f
+            gravity = Gravity.CENTER
+            contentDescription = "拖动悬浮窗"
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(34))
+        }
+        firstRow.addView(titleLabel)
         resultLabel = TextView(this).apply {
             text = "等待获取答案"
-            textSize = 21f
+            textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(5), 0, dp(5))
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(0, dp(34), 1f)
         }
-        root.addView(resultLabel)
-        detailLabel = TextView(this).apply {
-            text = "按下方按钮截取当前题目"
-            textSize = 11f
-            setTextColor(Color.rgb(178, 201, 221))
-            gravity = Gravity.CENTER
-        }
-        root.addView(detailLabel)
+        firstRow.addView(resultLabel)
+        root.addView(firstRow)
+
         button = Button(this).apply {
             text = "获取答案"
             isAllCaps = false
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            background = rounded(Color.rgb(20, 135, 229), 12)
-            layoutParams = LinearLayout.LayoutParams(dp(172), dp(47)).apply {
-                topMargin = dp(9)
+            textSize = 14f
+            minHeight = 0
+            minimumHeight = 0
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(dp(134), dp(38)).apply {
+                topMargin = dp(3)
+                gravity = Gravity.CENTER_HORIZONTAL
             }
             setOnClickListener {
                 Appearance.tap(it)
@@ -220,13 +225,13 @@ class OverlayService : Service() {
         }
         root.addView(button)
 
-        // Optional diagnostics show the text the image model extracted.
+        // Debug controls are invisible in the normal two-row layout.
         ocrToggle = TextView(this).apply {
             text = "查看图片理解文本 ▾"
             textSize = 12f
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(170, 209, 238))
             setPadding(0, dp(7), 0, dp(2))
+            visibility = View.GONE
             setOnClickListener {
                 Appearance.tap(it)
                 toggleOcrPanel()
@@ -236,23 +241,20 @@ class OverlayService : Service() {
         ocrText = TextView(this).apply {
             text = latestOcrText
             textSize = 13f
-            setTextColor(Color.WHITE)
             setTextIsSelectable(true)
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
         ocrPanel = ScrollView(this).apply {
             visibility = View.GONE
             isFillViewport = false
-            background = rounded(Color.rgb(36, 57, 76), 8)
             layoutParams = LinearLayout.LayoutParams(-1, dp(230)).apply {
                 topMargin = dp(8)
             }
             addView(ocrText)
         }
         root.addView(ocrPanel)
-
         overlayParams = WindowManager.LayoutParams(
-            dp(198), WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(220), WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -270,6 +272,7 @@ class OverlayService : Service() {
             override fun onTouch(view: View, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
+                        Appearance.tap(view)
                         lastX = event.rawX
                         lastY = event.rawY
                         initialX = overlayParams.x
@@ -277,13 +280,12 @@ class OverlayService : Service() {
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        overlayParams.x = (initialX - (event.rawX - lastX).toInt())
-                            .coerceAtLeast(0)
-                        overlayParams.y = (initialY + (event.rawY - lastY).toInt())
-                            .coerceAtLeast(0)
+                        overlayParams.x = (initialX - (event.rawX - lastX).toInt()).coerceAtLeast(0)
+                        overlayParams.y = (initialY + (event.rawY - lastY).toInt()).coerceAtLeast(0)
                         windows.updateViewLayout(root, overlayParams)
                         return true
                     }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> return true
                 }
                 return true
             }
@@ -295,15 +297,21 @@ class OverlayService : Service() {
     private fun refreshOverlayAppearance() {
         if (!::root.isInitialized) return
         val c = Appearance.resolve(this)
-        root.background = rounded(c.surface, 17)
+        root.background = rounded(c.surface, 15)
         titleLabel.setTextColor(c.accent)
         resultLabel.setTextColor(c.heading)
-        detailLabel.setTextColor(c.muted)
         button.setTextColor(c.accentText)
-        button.background = rounded(c.accent, 12)
+        button.background = rounded(c.accent, 10)
         ocrToggle.setTextColor(c.accent)
         ocrPanel.background = rounded(c.panel, 8)
         ocrText.setTextColor(c.text)
+        val debugEnabled = SecureConfig(this).showImageDebug
+        ocrToggle.visibility = if (debugEnabled) View.VISIBLE else View.GONE
+        if (!debugEnabled) ocrPanel.visibility = View.GONE
+        if (::windows.isInitialized) {
+            overlayParams.width = dp(if (debugEnabled && ocrPanel.visibility == View.VISIBLE) 312 else 220)
+            windows.updateViewLayout(root, overlayParams)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -312,10 +320,11 @@ class OverlayService : Service() {
     }
 
     private fun toggleOcrPanel() {
+        if (!SecureConfig(this).showImageDebug) return
         val expanded = ocrPanel.visibility != View.VISIBLE
         ocrPanel.visibility = if (expanded) View.VISIBLE else View.GONE
         ocrToggle.text = if (expanded) "收起图片理解文本 ▴" else "查看图片理解文本 ▾"
-        overlayParams.width = dp(if (expanded) 312 else 198)
+        overlayParams.width = dp(if (expanded) 312 else 220)
         windows.updateViewLayout(root, overlayParams)
     }
 
@@ -331,7 +340,6 @@ class OverlayService : Service() {
         if (!busy.compareAndSet(false, true)) return
         button.isEnabled = false
         resultLabel.text = "正在截图…"
-        detailLabel.text = "稍等片刻"
         updateOcrDiagnostic("正在截取本次屏幕画面……")
         val handler = captureHandler ?: run { fail("录屏未启动"); return }
         handler.post {
@@ -385,8 +393,8 @@ class OverlayService : Service() {
             mainHandler.post {
                 result.fold(
                     onSuccess = { answer ->
-                        resultLabel.text = "第 ${answer.index} 个"
-                        detailLabel.text = "${answer.optionCount} 选 1 · ${answer.elapsedMs} ms · 已联网"
+                        resultLabel.text = "第 ${answer.index} 个 · ${answer.elapsedMs}ms"
+                        resultLabel.contentDescription = "${answer.optionCount}选1，答案第${answer.index}个，耗时${answer.elapsedMs}毫秒，已联网"
                         finishBusy()
                     },
                     onFailure = { fail(it.message ?: "DeepSeek 请求失败") }
@@ -397,7 +405,9 @@ class OverlayService : Service() {
 
     private fun fail(message: String) {
         resultLabel.text = "获取失败"
-        detailLabel.text = message.take(65)
+        resultLabel.text = "获取失败，点此重试"
+        resultLabel.contentDescription = message
+        android.widget.Toast.makeText(this, message.take(180), android.widget.Toast.LENGTH_LONG).show()
         finishBusy()
     }
 
