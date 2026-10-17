@@ -21,7 +21,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - uses: android-actions/setup-android@v3
+      # GitHub Ubuntu runners already include the Android command-line tools.
       - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Build debug APK
