@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var countInput: EditText
     private lateinit var themeInput: Spinner
     private lateinit var hapticToggle: CheckBox
+    private lateinit var debugToggle: CheckBox
     private lateinit var status: TextView
     private lateinit var toggle: Button
     private lateinit var testButton: Button
@@ -137,6 +138,21 @@ class MainActivity : Activity() {
             }
         }
         advanced.addView(hapticToggle)
+        advanced.addView(label("调试选项"))
+        debugToggle = CheckBox(this).apply {
+            text = "显示图片理解文本（调试用，默认关闭）"
+            setTextColor(colors.text)
+            isChecked = config.showImageDebug
+            setOnCheckedChangeListener { _, enabled ->
+                config.showImageDebug = enabled
+                Appearance.tap(this)
+                if (OverlayService.isRunning) {
+                    startService(Intent(this@MainActivity, OverlayService::class.java)
+                        .setAction(OverlayService.ACTION_APPEARANCE))
+                }
+            }
+        }
+        advanced.addView(debugToggle)
         advanced.addView(label("DeepSeek API 根地址（HTTPS）"))
         endpointInput = field(SecureConfig.DEFAULT_ENDPOINT, config.endpoint)
         advanced.addView(endpointInput)
@@ -247,6 +263,7 @@ class MainActivity : Activity() {
             config.searchCount = count
             config.temperature = temperature
             config.hapticEnabled = hapticToggle.isChecked
+            config.showImageDebug = debugToggle.isChecked
             true
         } catch (_: Exception) {
             status.text = "密钥无法安全保存，请检查设备安全设置"
