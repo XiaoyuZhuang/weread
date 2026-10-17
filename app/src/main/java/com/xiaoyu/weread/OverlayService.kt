@@ -174,58 +174,58 @@ class OverlayService : Service() {
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
 
     private fun showOverlay() {
-        // Normal mode occupies exactly two rows: draggable status and action.
+        // Normal mode: one horizontal row, draggable handle + status + button.
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(9), dp(7), dp(9), dp(9))
+            setPadding(dp(7), dp(5), dp(7), dp(5))
             elevation = dp(10).toFloat()
         }
         val firstRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(34)
+            minimumHeight = dp(38)
         }
         titleLabel = TextView(this).apply {
             text = "⠿"
-            textSize = 22f
+            textSize = 19f
             gravity = Gravity.CENTER
             contentDescription = "拖动悬浮窗"
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(34))
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(36))
         }
         firstRow.addView(titleLabel)
         resultLabel = TextView(this).apply {
-            text = "等待获取答案"
-            textSize = 15f
+            text = "等待答题"
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(0, dp(34), 1f)
+            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f)
         }
         firstRow.addView(resultLabel)
-        root.addView(firstRow)
 
         button = Button(this).apply {
             text = "获取答案"
             isAllCaps = false
-            textSize = 14f
+            textSize = 13f
+            maxLines = 1
             minHeight = 0
             minimumHeight = 0
             minWidth = 0
             minimumWidth = 0
             setPadding(0, 0, 0, 0)
-            layoutParams = LinearLayout.LayoutParams(dp(134), dp(38)).apply {
-                topMargin = dp(3)
-                gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(dp(88), dp(34)).apply {
+                marginStart = dp(5)
             }
             setOnClickListener {
                 Appearance.tap(it)
                 captureCurrentQuestion()
             }
         }
-        root.addView(button)
+        firstRow.addView(button)
+        root.addView(firstRow)
 
-        // Debug controls are invisible in the normal two-row layout.
+        // Debug controls are invisible in the normal single-row layout.
         ocrToggle = TextView(this).apply {
             text = "查看图片理解文本 ▾"
             textSize = 12f
@@ -254,7 +254,7 @@ class OverlayService : Service() {
         }
         root.addView(ocrPanel)
         overlayParams = WindowManager.LayoutParams(
-            dp(220), WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(274), WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -312,7 +312,7 @@ class OverlayService : Service() {
             ocrToggle.text = "查看图片理解文本 ▾"
         }
         if (::windows.isInitialized) {
-            overlayParams.width = dp(if (debugEnabled && ocrPanel.visibility == View.VISIBLE) 312 else 220)
+            overlayParams.width = dp(if (debugEnabled && ocrPanel.visibility == View.VISIBLE) 312 else 274)
             windows.updateViewLayout(root, overlayParams)
         }
     }
@@ -327,7 +327,7 @@ class OverlayService : Service() {
         val expanded = ocrPanel.visibility != View.VISIBLE
         ocrPanel.visibility = if (expanded) View.VISIBLE else View.GONE
         ocrToggle.text = if (expanded) "收起图片理解文本 ▴" else "查看图片理解文本 ▾"
-        overlayParams.width = dp(if (expanded) 312 else 220)
+        overlayParams.width = dp(if (expanded) 312 else 274)
         windows.updateViewLayout(root, overlayParams)
     }
 
@@ -342,7 +342,7 @@ class OverlayService : Service() {
     private fun captureCurrentQuestion() {
         if (!busy.compareAndSet(false, true)) return
         button.isEnabled = false
-        resultLabel.text = "正在截图…"
+        resultLabel.text = "截图中…"
         updateOcrDiagnostic("正在截取本次屏幕画面……")
         val handler = captureHandler ?: run { fail("录屏未启动"); return }
         handler.post {
@@ -374,7 +374,7 @@ class OverlayService : Service() {
             fail("请在主界面填写 DeepSeek API Key")
             return
         }
-        resultLabel.text = "DeepSeek 图片识别中…"
+        resultLabel.text = "识图中…"
         updateOcrDiagnostic("已截取屏幕（${bitmap.width}×${bitmap.height}），正在压缩图片并发送给 DeepSeek 识别……")
         deepseek.ask(
             bitmap,
@@ -386,17 +386,17 @@ class OverlayService : Service() {
             onVision = { parsed ->
                 mainHandler.post {
                     updateOcrDiagnostic(parsed)
-                    resultLabel.text = "DeepSeek 搜索中…"
+                    resultLabel.text = "搜索中…"
                 }
             },
             onSearching = {
-                mainHandler.post { resultLabel.text = "Flash 判断中…" }
+                mainHandler.post { resultLabel.text = "思考中…" }
             }
         ) { result ->
             mainHandler.post {
                 result.fold(
                     onSuccess = { answer ->
-                        resultLabel.text = "第 ${answer.index} 个 · ${answer.elapsedMs}ms"
+                        resultLabel.text = "第 ${answer.index} 个"
                         resultLabel.contentDescription = "${answer.optionCount}选1，答案第${answer.index}个，耗时${answer.elapsedMs}毫秒，已联网"
                         finishBusy()
                     },
@@ -408,7 +408,6 @@ class OverlayService : Service() {
 
     private fun fail(message: String) {
         resultLabel.text = "获取失败"
-        resultLabel.text = "获取失败，请重试"
         resultLabel.contentDescription = message
         android.widget.Toast.makeText(this, message.take(180), android.widget.Toast.LENGTH_LONG).show()
         finishBusy()
