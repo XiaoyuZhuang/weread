@@ -4,7 +4,7 @@ Android 悬浮窗答题助手：**点击“获取答案” → MediaProjection �
 
 ## 安装与使用
 
-1. 前往 [预览版 Release](https://github.com/XiaoyuZhuang/weread/releases/tag/preview) 下载 `app-debug.apk`。
+1. 前往 [预览版 Release](https://github.com/XiaoyuZhuang/weread/releases/tag/preview) 下载 `weread-release.apk`（仅在签名 Secrets 设置后构建并发布）。
 2. 前往 [Groq 控制台](https://console.groq.com/keys) 创建 API Key。回到软件填写密钥。**注意 Groq 不是 xAI 的 Grok。**
 3. 默认已经配置了 `openai/gpt-oss-120b`、Groq 官方 Chat Completions API 地址，并开启联网搜索。
 4. 点击开启悬浮窗，授权悬浮窗和「录制整个屏幕」权限。
@@ -21,14 +21,30 @@ Android 悬浮窗答题助手：**点击“获取答案” → MediaProjection �
 - model: `openai/gpt-oss-120b`
 - tools: `[{"type":"browser_search"}]`
 - tool_choice: `required`（开启时强制使用搜索工具）
-- reasoning_effort: 首次 `low`，仅工具调用失败后的重试提升到 `medium`
-- temperature: 首次 `0.2`，仅重试时改为 `0.1`
+- reasoning_effort: 默认首次 `low`，工具调用失败重试默认 `medium`；均可在高级设置中修改
+- temperature: 默认首次 `0.2`、重试 `0.1`；均可在高级设置中修改
 
 Groq 会在服务器端完成搜索、分析和回复，无须本地浏览器或搜索 API。遇到明确的“强制搜索但模型没有调用工具”HTTP 400，程序自动再请求一次，增强搜索指令、降低温度并将推理等级临时提高到 medium。**两次都必须使用搜索工具；不会通过关闭搜索来掩盖失败。** 其他 400、401、403、429 不自动重试；重试会多消耗一次请求额度并增加等待。关闭高级设置中的联网搜索选项可以跳过搜索，但正确率可能下降。
 
 官方文档：https://console.groq.com/docs/tool-use/built-in-tools/browser-search
 
 模型提示必须返回两行：`COUNT=2` 和 `ANSWER=1`（仅为示例）。程序校验答案编号不超过识别选项数量。**不能保证模型总能正确识别2或4个选项；也不能保证正确率。**
+
+## 固定签名与覆盖更新（v0.3.0 起）
+
+签名私钥**不要上传到公开仓库**。请在 GitHub 仓库 Settings → Secrets and variables → Actions 新增两个 Repository Secrets：
+
+- `WEREAD_SIGNING_KEYSTORE_BASE64`：PKCS12 签名文件的 Base64 编码，完整单行。
+- `WEREAD_SIGNING_PASSWORD`：PKCS12 签名密码（同时用于 keystore 与 key entry）。
+- 固定别名：`weread-release`。
+
+Actions 将使用这两个私密值进行 `assembleRelease`，检查签名并将 `weread-release.apk` 上传到 [preview Release](https://github.com/XiaoyuZhuang/weread/releases/tag/preview)。如果尚未配置两个 Secrets，Actions 仍会编译并测试 debug 版，但**不会覆盖现有 Release**。设置好后，到 Actions 运行一次 `Android APK → Run workflow`。
+
+旧版 `app-debug.apk` 的签名证书与新证书不同，因此第一次切换到 `weread-release.apk` 仍需要卸载旧版一次。此后保持同一签名证书、相同 `applicationId` 和递增 `versionCode` 就能直接覆盖安装。注意旧版 App 设置/API 密钥可能因此被清空。
+
+## OCR 填空横线识别（v0.3.0）
+
+对 OCR 通常丢掉的长横线，尝试使用本机截图中的像素补充一个 `[填空]` 标记，例如 `做张[填空]智`。这是一种保守的图像检测启发式策略，**不能保证每条横线都识别正确**，尤其是横线与其他图形混杂时。可通过悬浮窗的「查看OCR识别文本」检查。
 
 ## 常见问题
 
@@ -39,7 +55,7 @@ Groq 会在服务器端完成搜索、分析和回复，无须本地浏览器或
 - **请求耗时长**：真实网页搜索可能花费数秒乃至更久；已设置 45 秒读取超时。
 - **API 测试失败**：先在主界面点击「测试 API」观察明确错误码，检查 API 密钥。
 - **Android 无法截图**：检查是否授权了**整个屏幕**、是否被系统禁止录屏。
-- **无法覆盖安装**：预览版通过 GitHub Actions 默认 debug 签名构建，不同运行可能出现签名不同，请先备份自己的数据再卸载旧版。
+- **无法覆盖安装**：旧版 debug 和新版固定 release 签名不同，第一次迁移需卸载一次；之后固定 release 签名支持覆盖更新。
 - **旧版配置**：原 Jev 密钥和接口参数不会自动迁移，避免误发到错误服务。
 
 尚未在真实手机上完成整条流程的验证；GitHub Actions 仅验证编译。测试 API 会实际发起一次带搜索的请求并占用使用额度。
@@ -50,7 +66,7 @@ Kotlin · Android 8.0+ · MediaProjection · TYPE_APPLICATION_OVERLAY · ML Kit 
 
 ## 编译
 
-JDK 17、Android SDK 35、Gradle 8.10.2：`gradle assembleDebug`，生成 `app/build/outputs/apk/debug/app-debug.apk`。
+JDK 17、Android SDK 35、Gradle 8.10.2：`gradle assembleDebug testDebugUnitTest`；有签名 Secrets 时 Actions 还会运行 `assembleRelease` 并发布固定签名版 APK。
 
 
 ## 签名提醒
