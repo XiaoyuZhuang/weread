@@ -30,6 +30,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -47,6 +48,10 @@ class OverlayService : Service() {
     private lateinit var resultLabel: TextView
     private lateinit var detailLabel: TextView
     private lateinit var button: Button
+    private lateinit var ocrToggle: TextView
+    private lateinit var ocrPanel: ScrollView
+    private lateinit var ocrText: TextView
+    private var latestOcrText = "尚未截图，请先点击获取答案"
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var reader: ImageReader? = null
@@ -207,6 +212,35 @@ class OverlayService : Service() {
         }
         root.addView(button)
 
+        // Diagnostic view only; hidden by default and does not change the
+        // capture, OCR, or Groq search behavior. Text remains visible on API 400.
+        ocrToggle = TextView(this).apply {
+            text = "查看OCR识别文本 ▾"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(170, 209, 238))
+            setPadding(0, dp(7), 0, dp(2))
+            setOnClickListener { toggleOcrPanel() }
+        }
+        root.addView(ocrToggle)
+        ocrText = TextView(this).apply {
+            text = latestOcrText
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setTextIsSelectable(true)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        ocrPanel = ScrollView(this).apply {
+            visibility = View.GONE
+            isFillViewport = false
+            background = rounded(Color.rgb(36, 57, 76), 8)
+            layoutParams = LinearLayout.LayoutParams(-1, dp(230)).apply {
+                topMargin = dp(8)
+            }
+            addView(ocrText)
+        }
+        root.addView(ocrPanel)
+
         overlayParams = WindowManager.LayoutParams(
             dp(198), WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -247,11 +281,28 @@ class OverlayService : Service() {
         windows.addView(root, overlayParams)
     }
 
+    private fun toggleOcrPanel() {
+        val expanded = ocrPanel.visibility != View.VISIBLE
+        ocrPanel.visibility = if (expanded) View.VISIBLE else View.GONE
+        ocrToggle.text = if (expanded) "收起OCR识别文本 ▴" else "查看OCR识别文本 ▾"
+        overlayParams.width = dp(if (expanded) 312 else 198)
+        windows.updateViewLayout(root, overlayParams)
+    }
+
+    private fun updateOcrDiagnostic(text: String) {
+        latestOcrText = text
+        if (::ocrText.isInitialized) {
+            ocrText.text = text
+            ocrPanel.scrollTo(0, 0)
+        }
+    }
+
     private fun captureCurrentQuestion() {
         if (!busy.compareAndSet(false, true)) return
         button.isEnabled = false
         resultLabel.text = "正在截图…"
         detailLabel.text = "稍等片刻"
+        updateOcrDiagnostic("正在截取本次屏幕画面……")
         val handler = captureHandler ?: run { fail("录屏未启动"); return }
         handler.post {
             screenshot?.recycle()
@@ -265,8 +316,10 @@ class OverlayService : Service() {
                 screenshot = null
                 mainHandler.post {
                     root.visibility = View.VISIBLE
-                    if (frame == null) fail("截图失败：请确保授权的是整个屏幕")
-                    else recognize(frame)
+                    if (frame == null) {
+                        updateOcrDiagnostic("截图失败：未获取到屏幕画面。请检查是否授权整个屏幕。")
+                        fail("截图失败：请确保授权的是整个屏幕")
+                    } else recognize(frame)
                 }
             }, 550)
         }
@@ -274,17 +327,22 @@ class OverlayService : Service() {
 
     private fun recognize(bitmap: Bitmap) {
         resultLabel.text = "识别文字中…"
+        updateOcrDiagnostic("已获取屏幕画面（${bitmap.width}×${bitmap.height}），正在本地OCR识别……")
         ocr.extract(bitmap) { result ->
             mainHandler.post {
                 result.fold(
                     onSuccess = { text ->
+                        updateOcrDiagnostic(if (text.isBlank()) "截图成功，但OCR未识别出文字" else text)
                         if (text.length < 8) {
                             fail("题目文字太少，请重试")
                         } else {
                             requestAnswer(text)
                         }
                     },
-                    onFailure = { fail("OCR 失败：${it.message ?: "未知错误"}") }
+                    onFailure = {
+                        updateOcrDiagnostic("截图成功，但OCR失败：${it.message ?: "未知错误"}")
+                        fail("OCR 失败：${it.message ?: "未知错误"}")
+                    }
                 )
             }
         }
