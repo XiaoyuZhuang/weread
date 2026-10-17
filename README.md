@@ -51,3 +51,8 @@ Kotlin · Android 8.0+ · MediaProjection · TYPE_APPLICATION_OVERLAY · ML Kit 
 ## 编译
 
 JDK 17、Android SDK 35、Gradle 8.10.2：`gradle assembleDebug`，生成 `app/build/outputs/apk/debug/app-debug.apk`。
+
+
+## 签名提醒
+
+建议在 GitHub Actions Secrets 保存 Android 签名所需的 keystore Base64 和密码，不要把签名私钥放入公开仓库。固定签名可用于后续覆盖安装；与旧调试签名不同的首个版本仍需迁移一次。
