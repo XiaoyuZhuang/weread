@@ -103,24 +103,19 @@ class MainActivity : Activity() {
             setPadding(0, dp(10), 0, dp(22))
         })
 
-        content.addView(label("DeepSeek 官方 API Key"))
+        val model = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        model.addView(text("模型设置", 21f).apply { typeface = Typeface.DEFAULT_BOLD; setPadding(0, dp(16), 0, dp(12)) })
+        model.addView(label("DeepSeek 官方 API Key"))
         keyInput = field("输入 DeepSeek API Key", config.loadKey()).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        content.addView(keyInput)
+        model.addView(keyInput)
 
         val advanced = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
-        content.addView(Button(this).apply {
-            text = "设置（主题 / 震动 / 接口 / 模型） ▾"
-            isAllCaps = false
-            setOnClickListener {
-                Appearance.tap(it)
-                advanced.visibility = if (advanced.visibility == View.GONE) View.VISIBLE else View.GONE
-            }
-        })
+        advanced.addView(text("软件设置", 21f).apply { typeface = Typeface.DEFAULT_BOLD; setPadding(0, dp(28), 0, dp(12)) })
         advanced.addView(label("外观主题"))
         val themes = listOf("跟随系统", "浅色模式", "深色模式")
         themeInput = Spinner(this).apply {
@@ -155,23 +150,24 @@ class MainActivity : Activity() {
             }
         }
         advanced.addView(debugToggle)
-        advanced.addView(label("DeepSeek API 根地址（HTTPS）"))
+        model.addView(label("DeepSeek API 根地址（HTTPS）"))
         endpointInput = field(SecureConfig.DEFAULT_ENDPOINT, config.endpoint)
-        advanced.addView(endpointInput)
-        advanced.addView(label("Flash 模型"))
+        model.addView(endpointInput)
+        model.addView(label("Flash 模型"))
         visionInput = field(SecureConfig.DEFAULT_VISION_MODEL, config.visionModel)
-        advanced.addView(visionInput)
-        advanced.addView(label("搜索结果数量（3～8，默认5）"))
+        model.addView(visionInput)
+        model.addView(label("搜索结果数量（3～8，默认5）"))
         countInput = field("5", config.searchCount.toString()).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
         }
-        advanced.addView(countInput)
-        advanced.addView(label("模型温度（0～2，默认0.2）"))
+        model.addView(countInput)
+        model.addView(label("模型温度（0～2，默认0.2）"))
         temperatureInput = field("0.2", config.temperature.toString()).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
-        advanced.addView(temperatureInput)
-        advanced.addView(text("联网搜索始终执行；搜索没有结果不会直接猜答案。", 12f, true))
+        model.addView(temperatureInput)
+        model.addView(text("联网搜索始终执行；搜索没有结果不会直接猜答案。", 12f, true))
+        content.addView(model)
         content.addView(advanced)
 
         // A theme switch re-creates the activity, retaining the draft inputs.
@@ -199,13 +195,13 @@ class MainActivity : Activity() {
                 testApi()
             }
         }
-        content.addView(testButton)
+        model.addView(testButton)
         testStatus = text("测试结果将在这里显示", 13f, true).apply {
             setPadding(dp(16), dp(14), dp(16), dp(14))
             background = bg(colors.panel, 14)
             setTextIsSelectable(true)
         }
-        content.addView(testStatus)
+        model.addView(testStatus)
         toggle = Button(this).apply {
             isAllCaps = false
             textSize = 18f
@@ -237,14 +233,29 @@ class MainActivity : Activity() {
         home.addView(text("读书有伴 · 答题轻松一点", 15f, true).apply { setPadding(0, dp(12), 0, dp(32)) })
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = bg(colors.surface, 24)
-            setPadding(dp(20), dp(8), dp(20), dp(16))
+            setPadding(0, 0, 0, dp(8))
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) }
         }
         content.removeView(toggle); hero.addView(toggle)
         content.removeView(status); hero.addView(status)
         home.addView(hero)
         home.addView(text("开启悬浮窗后，前往微信读书。\n点击获取答案，即可自动识题、搜索并判断。", 15f, true))
+        home.addView(text("悬浮窗预览", 17f).apply { typeface = Typeface.DEFAULT_BOLD; setPadding(0, dp(36), 0, dp(14)) })
+        val preview = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = bg(colors.surface, 20)
+            elevation = dp(2).toFloat()
+        }
+        preview.addView(text("⠿", 24f, true))
+        preview.addView(text("  第 2 个", 18f).apply { typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(0, -2, 1f))
+        preview.addView(text("获取答案", 14f).apply {
+            setTextColor(colors.accentText); background = bg(colors.accent, 14)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        })
+        home.addView(preview)
+        home.addView(text("拖动左侧手柄调整位置，点击右侧按钮开始答题。", 13f, true).apply { setPadding(0, dp(14), 0, dp(24)) })
+        home.addView(text("01  截取题目    →    02  联网核对    →    03  查看答案", 12f, true))
         advanced.visibility = View.VISIBLE
         for (i in 0 until content.childCount) {
             val v = content.getChildAt(i)
@@ -255,11 +266,17 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, checked -> AppLog.enabled = checked; Appearance.tap(this) }
         })
         advanced.addView(text("仅开启后记录；保存在本机，最多约100KB。包含题目和模型文字，不保存截图或密钥。", 12f, true))
-        content.addView(Button(this).apply {
-            text = "保存设置"
+        model.addView(Button(this).apply {
+            text = "保存模型设置"
             setOnClickListener { Appearance.tap(it); if (saveSettings()) android.widget.Toast.makeText(this@MainActivity, "已保存", 0).show()
                 else android.widget.Toast.makeText(this@MainActivity, status.text, 1).show() }
         })
+        val updateStatus = text("当前版本 " + packageManager.getPackageInfo(packageName, 0).versionName, 13f, true)
+        advanced.addView(Button(this).apply {
+            text = "检查更新"
+            setOnClickListener { Appearance.tap(it); checkUpdate(this, updateStatus) }
+        })
+        advanced.addView(updateStatus)
         val logs = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(48), dp(24), dp(24)) }
         logs.addView(text("运行日志", 28f).apply { typeface = Typeface.DEFAULT_BOLD })
         val logText = text("", 13f).apply { setTextIsSelectable(true); typeface = Typeface.MONOSPACE }
@@ -293,12 +310,13 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     Appearance.tap(it)
                     pages.forEachIndexed { i, v -> v.visibility = if(i == index) View.VISIBLE else View.GONE }
-                    tabs.forEachIndexed { i, b -> b.setTextColor(if(i == index) colors.accentText else colors.text); b.background = bg(if(i == index) colors.accent else colors.surface, 14) }
+                    tabs.forEachIndexed { i, b -> b.setTextColor(colors.accentText); b.alpha = if(i == index) 1f else 0.65f }
                     if(index == 2) refreshLogs()
                 }
             }
             tabs.add(button); nav.addView(button, LinearLayout.LayoutParams(0, dp(50), 1f))
         }
+        tabs.forEachIndexed { i, b -> b.alpha = if(i == 0) 1f else 0.65f }
         shell.addView(nav)
         shell.setOnApplyWindowInsetsListener { view, insets ->
             if (Build.VERSION.SDK_INT >= 30) {
@@ -311,9 +329,70 @@ class MainActivity : Activity() {
             }
             insets
         }
+        fun styleButtons(view: View) {
+            if (view is Button && view !is CheckBox) {
+                view.backgroundTintList = null
+                view.background = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                    bg(colors.accent, 14), null)
+                view.setTextColor(colors.accentText)
+                view.isAllCaps = false
+                view.elevation = 0f
+                val lp = view.layoutParams as? LinearLayout.LayoutParams
+                lp?.let { it.setMargins(dp(4), dp(6), dp(4), dp(6)); view.layoutParams = it }
+            }
+            if (view is android.view.ViewGroup) for (i in 0 until view.childCount) styleButtons(view.getChildAt(i))
+        }
+        styleButtons(shell)
         setContentView(shell)
         shell.requestApplyInsets()
         refreshState()
+    }
+
+    private fun checkUpdate(button: Button, result: TextView) {
+        button.isEnabled = false
+        result.text = "正在检查新版本…"
+        Thread {
+            val outcome = runCatching {
+                val conn = java.net.URL("https://api.github.com/repos/XiaoyuZhuang/weread/releases/latest").openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10000; conn.readTimeout = 15000
+                conn.setRequestProperty("Accept", "application/vnd.github+json")
+                conn.setRequestProperty("User-Agent", "WeRead-Android")
+                try {
+                    check(conn.responseCode == 200) { "HTTP " + conn.responseCode }
+                    val json = org.json.JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                    val tag = json.getString("tag_name")
+                    val current = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.0.0"
+                    fun parts(v: String) = v.removePrefix("v").split(".").map { it.toIntOrNull() ?: 0 }
+                    val a = parts(tag); val b = parts(current)
+                    var newer = false
+                    for (i in 0 until maxOf(a.size, b.size)) {
+                        val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
+                        if (x != y) { newer = x > y; break }
+                    }
+                    tag to newer
+                } finally { conn.disconnect() }
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                button.isEnabled = true
+                outcome.fold(onSuccess = { (tag, newer) ->
+                    result.text = if (newer) "发现新版本 " + tag else "当前已是最新版本"
+                    if (newer) android.app.AlertDialog.Builder(this)
+                        .setTitle("发现新版本 " + tag)
+                        .setMessage("是否打开 GitHub 发布页面，自行下载安装包？")
+                        .setNegativeButton("暂不更新", null)
+                        .setPositiveButton("前往下载") { _, _ ->
+                            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/XiaoyuZhuang/weread/releases/latest"))) }
+                                .onFailure { result.text = "无法打开浏览器，请手动访问 GitHub 发布页" }
+                        }.show().also { dialog ->
+                            listOf(android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEGATIVE).forEach { which ->
+                                dialog.getButton(which).apply { backgroundTintList = null; background = bg(colors.accent, 14); setTextColor(colors.accentText) }
+                            }
+                        }
+                }, onFailure = { result.text = "检查失败，请稍后重试：" + it.message })
+            }
+        }.start()
     }
 
     private fun storeDraft() {
