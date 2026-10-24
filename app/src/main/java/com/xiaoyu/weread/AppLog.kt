@@ -22,8 +22,7 @@ object AppLog {
             if (key.isNotBlank()) safe = safe.replace(key, "[密钥已隐藏]")
             safe = safe.replace(Regex("sk-[A-Za-z0-9_-]+"), "[密钥已隐藏]")
             val line = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date()) +
-                " [" + stage + "] " + safe.take(3000) + "
-"
+                " [" + stage + "] " + safe.take(3000) + "\n"
             val f = file() ?: return
             val old = if (f.exists()) f.readText() else ""
             f.writeText((line + old).take(100000))
