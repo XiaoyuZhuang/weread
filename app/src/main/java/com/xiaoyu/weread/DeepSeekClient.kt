@@ -117,7 +117,7 @@ class DeepSeekClient {
             .put(JSONObject().put("type", "image").put("source", source))
         val payload = JSONObject()
             .put("model", model)
-            .put("max_tokens", 900)
+            .put("max_tokens", 2048)
             .put("temperature", temperature)
             .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
         val text = readAnthropicText(post(endpoint, key, payload, true))
@@ -168,7 +168,8 @@ class DeepSeekClient {
             已通过 DeepSeek 官方 Search API 联网搜索，下面是真正返回的网页资料。
             结合搜索结果和题目的准确表述判断正确选项，勿仅凭常识猜测。
             如果题目含 [填空]，把各选项分别放入空位比较。
-            严格按屏幕从上到下的选项序号，输出两行：
+            最终回复不包含分析、解释、Markdown 或其他文字。
+            严格按屏幕从上到下的选项序号，只输出两行：
             COUNT=2
             ANSWER=1
             数字仅为示例。COUNT 必须取实际选项数2/3/4，ANSWER 必须在 1 到 COUNT 中。
@@ -181,20 +182,31 @@ class DeepSeekClient {
         """.trimIndent()
         val payload = JSONObject()
             .put("model", model)
-            .put("max_tokens", 550)
+            .put("max_tokens", 4096)
             .put("temperature", temperature)
             .put("messages", JSONArray().put(JSONObject()
                 .put("role", "user").put("content", instructions)))
-        val answer = readAnthropicText(post(endpoint, key, payload, true))
-        AppLog.write("答案原文", answer.ifBlank { "[空文本]" })
-        return AnswerParser.parse(answer)
-            ?: throw IllegalStateException("Flash 未按格式返回正确选项序号")
+        repeat(2) { attempt ->
+            AppLog.write("答题预算", "第${attempt + 1}次，上限4096 tokens")
+            val response = post(endpoint, key, payload, true)
+            val answer = readAnthropicText(response)
+            AppLog.write("答案原文", answer.ifBlank { "[空文本]" })
+            val truncated = response.optString("stop_reason") == "max_tokens"
+            val parsed = AnswerParser.parse(answer)
+            if (!truncated && parsed != null) return parsed
+            val reason = if (truncated) "答案生成被截断" else if (answer.isBlank()) "返回空答案" else "答案格式不符"
+            AppLog.write("答题校验", reason)
+            if (attempt == 1) throw IllegalStateException(reason + "，已重试一次")
+            AppLog.write("重试", "复用题目与搜索结果，仅重新请求答案")
+        }
+        throw IllegalStateException("无法获取答案")
     }
 
     private fun readAnthropicText(json: JSONObject): String {
         AppLog.write(stage, "stop_reason=" + json.optString("stop_reason") + " usage=" + json.optJSONObject("usage"))
         val blocks = json.optJSONArray("content")
             ?: throw IllegalStateException("DeepSeek 图片/文本接口缺少 content")
+        AppLog.write(stage, "响应块类型=" + (0 until blocks.length()).joinToString { blocks.optJSONObject(it)?.optString("type").orEmpty() })
         return (0 until blocks.length()).mapNotNull { index ->
             blocks.optJSONObject(index)?.takeIf { it.optString("type") == "text" }?.optString("text")
         }.joinToString("\n").trim()

@@ -41,6 +41,7 @@ class MainActivity : Activity() {
     private lateinit var hapticToggle: CheckBox
     private lateinit var debugToggle: CheckBox
     private lateinit var status: TextView
+    private lateinit var testStatus: TextView
     private lateinit var toggle: Button
     private lateinit var testButton: Button
     private val client = DeepSeekClient()
@@ -199,6 +200,12 @@ class MainActivity : Activity() {
             }
         }
         content.addView(testButton)
+        testStatus = text("测试结果将在这里显示", 13f, true).apply {
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = bg(colors.panel, 14)
+            setTextIsSelectable(true)
+        }
+        content.addView(testStatus)
         toggle = Button(this).apply {
             isAllCaps = false
             textSize = 18f
@@ -224,11 +231,19 @@ class MainActivity : Activity() {
             "联网搜索使用同一密钥，无需另外配置。请勿在截图中暴露敏感信息。", 13f, true))
 
         // Separate existing controls into persistent pages so drafts survive tab switches.
-        val home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
+        val home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(48), dp(24), dp(24)) }
+        home.addView(text("WEREAD  /  阅读助手", 12f, true).apply { setPadding(0, 0, 0, dp(12)) })
         home.addView(text("每日一答", 30f).apply { typeface = Typeface.DEFAULT_BOLD; setTextColor(colors.heading) })
         home.addView(text("读书有伴 · 答题轻松一点", 15f, true).apply { setPadding(0, dp(12), 0, dp(32)) })
-        content.removeView(toggle); home.addView(toggle)
-        content.removeView(status); home.addView(status)
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = bg(colors.surface, 24)
+            setPadding(dp(20), dp(8), dp(20), dp(16))
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) }
+        }
+        content.removeView(toggle); hero.addView(toggle)
+        content.removeView(status); hero.addView(status)
+        home.addView(hero)
         home.addView(text("开启悬浮窗后，前往微信读书。\n点击获取答案，即可自动识题、搜索并判断。", 15f, true))
         advanced.visibility = View.VISIBLE
         for (i in 0 until content.childCount) {
@@ -245,7 +260,7 @@ class MainActivity : Activity() {
             setOnClickListener { Appearance.tap(it); if (saveSettings()) android.widget.Toast.makeText(this@MainActivity, "已保存", 0).show()
                 else android.widget.Toast.makeText(this@MainActivity, status.text, 1).show() }
         })
-        val logs = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
+        val logs = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(48), dp(24), dp(24)) }
         logs.addView(text("运行日志", 28f).apply { typeface = Typeface.DEFAULT_BOLD })
         val logText = text("", 13f).apply { setTextIsSelectable(true); typeface = Typeface.MONOSPACE }
         fun refreshLogs() { logText.text = AppLog.read().ifBlank { if (AppLog.enabled) "暂无日志，答题后点击刷新。" else "日志未开启，请到设置页开启后复现问题。" } }
@@ -274,18 +289,30 @@ class MainActivity : Activity() {
         val tabs = mutableListOf<Button>()
         listOf("主页", "设置", "日志").forEachIndexed { index, title ->
             val button = Button(this).apply {
-                text = title; isAllCaps = false; setTextColor(colors.text); background = bg(if(index == 0) colors.accent else colors.surface, 14)
+                text = title; isAllCaps = false; setTextColor(if(index == 0) colors.accentText else colors.text); background = bg(if(index == 0) colors.accent else colors.surface, 14)
                 setOnClickListener {
                     Appearance.tap(it)
                     pages.forEachIndexed { i, v -> v.visibility = if(i == index) View.VISIBLE else View.GONE }
-                    tabs.forEachIndexed { i, b -> b.background = bg(if(i == index) colors.accent else colors.surface, 14) }
+                    tabs.forEachIndexed { i, b -> b.setTextColor(if(i == index) colors.accentText else colors.text); b.background = bg(if(i == index) colors.accent else colors.surface, 14) }
                     if(index == 2) refreshLogs()
                 }
             }
             tabs.add(button); nav.addView(button, LinearLayout.LayoutParams(0, dp(50), 1f))
         }
         shell.addView(nav)
+        shell.setOnApplyWindowInsetsListener { view, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val safe = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            } else {
+                @Suppress("DEPRECATION")
+                view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
+                    insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            }
+            insets
+        }
         setContentView(shell)
+        shell.requestApplyInsets()
         refreshState()
     }
 
@@ -336,9 +363,9 @@ class MainActivity : Activity() {
     }
 
     private fun testApi() {
-        if (!saveSettings()) return
+        if (!saveSettings()) { testStatus.text = status.text; return }
         testButton.isEnabled = false
-        status.text = "测试中：上传测试图片 → 搜索 → Flash 判断……"
+        testStatus.text = "测试中：上传测试图片 → 搜索 → Flash 判断……"
         val bitmap = Bitmap.createBitmap(780, 520, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.rgb(9, 38, 71))
@@ -351,19 +378,19 @@ class MainActivity : Activity() {
         canvas.drawText("上海", 80f, 380f, paint)
         client.ask(bitmap, config.loadKey(), config.endpoint, config.visionModel,
             config.temperature, config.searchCount,
-            onVision = { runOnUiThread { if (!isDestroyed) status.text = "图片识别成功，联网搜索中……" } },
-            onSearching = { runOnUiThread { if (!isDestroyed) status.text = "搜索成功，Flash 判断中……" } }
+            onVision = { runOnUiThread { if (!isDestroyed) testStatus.text = "图片识别成功，联网搜索中……" } },
+            onSearching = { runOnUiThread { if (!isDestroyed) testStatus.text = "搜索成功，Flash 判断中……" } }
         ) { result ->
             runOnUiThread {
                 if (!isDestroyed) {
                     testButton.isEnabled = true
                     result.fold(
                         onSuccess = { answer ->
-                            status.text = if (answer.index == 1)
+                            testStatus.text = if (answer.index == 1)
                                 "测试通过 · 已搜索 · ${answer.elapsedMs} ms"
                             else "搜索成功，但测试题回答异常（第${answer.index}项）"
                         },
-                        onFailure = { status.text = "测试失败：${it.message ?: "未知错误"}" }
+                        onFailure = { testStatus.text = "测试失败：${it.message ?: "未知错误"}" }
                     )
                 }
             }
