@@ -342,6 +342,8 @@ class OverlayService : Service() {
     private fun captureCurrentQuestion() {
         if (!busy.compareAndSet(false, true)) return
         button.isEnabled = false
+        AppLog.init(this)
+        AppLog.write("截图", "开始捕获屏幕")
         resultLabel.text = "截图中…"
         updateOcrDiagnostic("正在截取本次屏幕画面……")
         val handler = captureHandler ?: run { fail("录屏未启动"); return }
@@ -407,7 +409,9 @@ class OverlayService : Service() {
     }
 
     private fun fail(message: String) {
-        resultLabel.text = "获取失败"
+        AppLog.init(this)
+        AppLog.write("失败", message)
+        resultLabel.text = message.substringBefore("：").take(12)
         resultLabel.contentDescription = message
         android.widget.Toast.makeText(this, message.take(180), android.widget.Toast.LENGTH_LONG).show()
         finishBusy()

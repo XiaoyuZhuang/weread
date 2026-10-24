@@ -49,6 +49,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         config = SecureConfig(this)
+        AppLog.init(this)
         colors = Appearance.resolve(this)
         setTheme(if (colors.dark) android.R.style.Theme_Material_NoActionBar
                  else android.R.style.Theme_Material_Light_NoActionBar)
@@ -93,11 +94,11 @@ class MainActivity : Activity() {
             setPadding(dp(24), dp(44), dp(24), dp(24))
         }
         scroll.addView(content)
-        content.addView(text("微信读书 · 每日一答", 25f).apply {
+        content.addView(text("偏好设置", 25f).apply {
             setTextColor(colors.heading)
             typeface = Typeface.DEFAULT_BOLD
         })
-        content.addView(text("Flash 看图 → 官方搜索 → Flash 判断", 14f, true).apply {
+        content.addView(text("外观、连接与诊断", 14f, true).apply {
             setPadding(0, dp(10), 0, dp(22))
         })
 
@@ -221,7 +222,70 @@ class MainActivity : Activity() {
         content.addView(text(
             "首次开启需授权悬浮窗和录制整个屏幕。截取画面在本机压缩为 JPEG 后发送给 DeepSeek，" +
             "联网搜索使用同一密钥，无需另外配置。请勿在截图中暴露敏感信息。", 13f, true))
-        setContentView(scroll)
+
+        // Separate existing controls into persistent pages so drafts survive tab switches.
+        val home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
+        home.addView(text("每日一答", 30f).apply { typeface = Typeface.DEFAULT_BOLD; setTextColor(colors.heading) })
+        home.addView(text("读书有伴 · 答题轻松一点", 15f, true).apply { setPadding(0, dp(12), 0, dp(32)) })
+        content.removeView(toggle); home.addView(toggle)
+        content.removeView(status); home.addView(status)
+        home.addView(text("开启悬浮窗后，前往微信读书。\n点击获取答案，即可自动识题、搜索并判断。", 15f, true))
+        advanced.visibility = View.VISIBLE
+        for (i in 0 until content.childCount) {
+            val v = content.getChildAt(i)
+            if (v is Button && v !== testButton) v.visibility = View.GONE
+        }
+        advanced.addView(CheckBox(this).apply {
+            text = "开启日志"; setTextColor(colors.text); isChecked = AppLog.enabled
+            setOnCheckedChangeListener { _, checked -> AppLog.enabled = checked; Appearance.tap(this) }
+        })
+        advanced.addView(text("仅开启后记录；保存在本机，最多约100KB。包含题目和模型文字，不保存截图或密钥。", 12f, true))
+        content.addView(Button(this).apply {
+            text = "保存设置"
+            setOnClickListener { Appearance.tap(it); if (saveSettings()) android.widget.Toast.makeText(this@MainActivity, "已保存", 0).show()
+                else android.widget.Toast.makeText(this@MainActivity, status.text, 1).show() }
+        })
+        val logs = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
+        logs.addView(text("运行日志", 28f).apply { typeface = Typeface.DEFAULT_BOLD })
+        val logText = text("", 13f).apply { setTextIsSelectable(true); typeface = Typeface.MONOSPACE }
+        fun refreshLogs() { logText.text = AppLog.read().ifBlank { if (AppLog.enabled) "暂无日志，答题后点击刷新。" else "日志未开启，请到设置页开启后复现问题。" } }
+        val actions = LinearLayout(this)
+        listOf("刷新", "复制", "清空").forEachIndexed { index, title ->
+            actions.addView(Button(this).apply { text = title; setOnClickListener {
+                Appearance.tap(it)
+                when(index) {
+                    0 -> refreshLogs()
+                    1 -> { val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("运行日志", AppLog.read())) }
+                    2 -> { AppLog.clear(); refreshLogs() }
+                }
+            } }, LinearLayout.LayoutParams(0, dp(52), 1f))
+        }
+        logs.addView(actions); logs.addView(logText)
+        val homeScroll = ScrollView(this).apply { addView(home) }
+        val logScroll = ScrollView(this).apply { addView(logs) }
+        val frame = android.widget.FrameLayout(this)
+        listOf(homeScroll, scroll, logScroll).forEach { frame.addView(it); it.visibility = View.GONE }
+        homeScroll.visibility = View.VISIBLE
+        val shell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(colors.background) }
+        shell.addView(frame, LinearLayout.LayoutParams(-1, 0, 1f))
+        val nav = LinearLayout(this).apply { setPadding(dp(12), dp(8), dp(12), dp(12)); setBackgroundColor(colors.surface) }
+        val pages = listOf(homeScroll, scroll, logScroll)
+        val tabs = mutableListOf<Button>()
+        listOf("主页", "设置", "日志").forEachIndexed { index, title ->
+            val button = Button(this).apply {
+                text = title; isAllCaps = false; setTextColor(colors.text); background = bg(if(index == 0) colors.accent else colors.surface, 14)
+                setOnClickListener {
+                    Appearance.tap(it)
+                    pages.forEachIndexed { i, v -> v.visibility = if(i == index) View.VISIBLE else View.GONE }
+                    tabs.forEachIndexed { i, b -> b.background = bg(if(i == index) colors.accent else colors.surface, 14) }
+                    if(index == 2) refreshLogs()
+                }
+            }
+            tabs.add(button); nav.addView(button, LinearLayout.LayoutParams(0, dp(50), 1f))
+        }
+        shell.addView(nav)
+        setContentView(shell)
         refreshState()
     }
 

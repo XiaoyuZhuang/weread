@@ -18,6 +18,7 @@ data class Answer(val index: Int, val optionCount: Int, val elapsedMs: Long)
  * A real HTTP 200 Search result is mandatory; answers without search are rejected.
  */
 class DeepSeekClient {
+    @Volatile private var stage = "准备"
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
     fun ask(
@@ -34,17 +35,22 @@ class DeepSeekClient {
         executor.execute {
             callback(runCatching {
                 val start = System.currentTimeMillis()
+                AppLog.write("开始", "新答题请求")
+                stage = "识图"
                 val image = encodeJpeg(screenshot)
                 require(apiKey.isNotBlank()) { "请填写 DeepSeek API Key" }
                 val base = validateBaseUrl(baseUrl)
                 val visionText = chatVision(
                     "$base/anthropic/v1/messages", apiKey, visionModel, temperature, image
                 )
+                AppLog.write("识图", visionText)
+                stage = "搜索"
                 onVision(visionText)
                 val question = SearchQuestion.fromVision(visionText)
                 val evidence = search(
                     "$base/v1/tools/search", apiKey, question, searchCount
                 )
+                stage = "思考"
                 onSearching()
                 val answer = flashAnswer(
                     "$base/anthropic/v1/messages", apiKey, visionModel,
@@ -54,7 +60,11 @@ class DeepSeekClient {
                 if (visionCount in 2..4 && answer.second != visionCount) {
                     throw IllegalStateException("搜索模型选项数与图片不一致，请重试")
                 }
+                AppLog.write("完成", "第${answer.first}项，总耗时${System.currentTimeMillis() - start}ms")
                 Answer(answer.first, answer.second, System.currentTimeMillis() - start)
+            }.recoverCatching { error ->
+                AppLog.write(stage + "失败", error.javaClass.simpleName + ": " + error.message)
+                throw IllegalStateException(stage + "失败：" + (error.message ?: error.javaClass.simpleName), error)
             })
         }
     }
@@ -176,11 +186,13 @@ class DeepSeekClient {
             .put("messages", JSONArray().put(JSONObject()
                 .put("role", "user").put("content", instructions)))
         val answer = readAnthropicText(post(endpoint, key, payload, true))
+        AppLog.write("答案原文", answer.ifBlank { "[空文本]" })
         return AnswerParser.parse(answer)
             ?: throw IllegalStateException("Flash 未按格式返回正确选项序号")
     }
 
     private fun readAnthropicText(json: JSONObject): String {
+        AppLog.write(stage, "stop_reason=" + json.optString("stop_reason") + " usage=" + json.optJSONObject("usage"))
         val blocks = json.optJSONArray("content")
             ?: throw IllegalStateException("DeepSeek 图片/文本接口缺少 content")
         return (0 until blocks.length()).mapNotNull { index ->
@@ -191,6 +203,8 @@ class DeepSeekClient {
     private fun post(
         endpoint: String, key: String, payload: JSONObject, anthropic: Boolean
     ): JSONObject {
+        val started = System.currentTimeMillis()
+        AppLog.write(stage, "发送请求")
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10000
@@ -209,6 +223,7 @@ class DeepSeekClient {
             val status = conn.responseCode
             val response = (if (status in 200..299) conn.inputStream
                 else conn.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+            AppLog.write(stage, "HTTP $status，耗时 ${System.currentTimeMillis() - started}ms")
             if (status !in 200..299) {
                 val detail = runCatching {
                     val data = JSONObject(response)
