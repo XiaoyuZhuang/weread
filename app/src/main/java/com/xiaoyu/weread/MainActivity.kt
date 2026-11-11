@@ -156,6 +156,13 @@ class MainActivity : Activity() {
         model.addView(label("Flash 模型"))
         visionInput = field(SecureConfig.DEFAULT_VISION_MODEL, config.visionModel)
         model.addView(visionInput)
+        model.addView(CheckBox(this).apply {
+            text = "开启低档思考（默认关闭）"
+            setTextColor(colors.text)
+            isChecked = config.thinkingEnabled
+            setOnCheckedChangeListener { _, enabled -> config.thinkingEnabled = enabled }
+        })
+        model.addView(text("同时用于识图和答题；关闭优先加速，开启使用低档思考。更改立即保存，下次请求生效。", 12f, true))
         model.addView(label("搜索结果数量（3～8，默认5）"))
         countInput = field("5", config.searchCount.toString()).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -456,7 +463,7 @@ class MainActivity : Activity() {
         canvas.drawText("北京", 80f, 260f, paint)
         canvas.drawText("上海", 80f, 380f, paint)
         client.ask(bitmap, config.loadKey(), config.endpoint, config.visionModel,
-            config.temperature, config.searchCount,
+            config.temperature, config.searchCount, config.thinkingEnabled,
             onVision = { runOnUiThread { if (!isDestroyed) testStatus.text = "图片识别成功，联网搜索中……" } },
             onSearching = { runOnUiThread { if (!isDestroyed) testStatus.text = "搜索成功，Flash 判断中……" } }
         ) { result ->

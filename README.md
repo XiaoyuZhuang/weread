@@ -65,3 +65,13 @@
 ## 正式版发布流程
 
 `main` 是唯一开发主分支；推送后 Actions 使用 GitHub Secrets 中的原有固定证书签名。成功后按 Android `versionName` 自动创建/更新 `vX.Y.Z` **正式 Release**，并附带 `weread-release.apk`。旧的 `preview` 预览 Release 会在新正式版成功发布后清理，避免普通用户混淆。
+
+## v0.6.3：随时重新识题与思考开关
+
+- 识图、搜索、思考期间，右侧按钮显示「重新识题」，始终可点。点击即取消旧任务的网络连接，重新截图、识图、搜索、答题，新题不排在旧题后面。
+- 旧任务迟到的进度、答案或错误不会覆盖新题。截图时仍短暂隐藏悬浮窗，避免截入按钮；没有新增整题倒计时或思考超时。
+- 设置中新增「开启低档思考」，默认关闭（升级用户也默认关闭），立即保存，下次请求生效。关闭时识图和答题发送 `thinking.type=disabled`；开启时发送 `thinking.type=enabled` 和 `output_config.effort=low`。搜索请求不带思考参数。
+- 参数依据 [DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/) 和 [Anthropic 兼容接口](https://api-docs.deepseek.com/guides/anthropic_api/)。其他供应商不一定支持相同参数；自定义地址需兼容本项目的 DeepSeek 接口。
+- 取消会停止客户端等待并关闭连接，但无法保证服务端停止已开始的推理或免除该次费用。关闭思考可以减少推理耗时，不能消除服务端故障造成的延迟。
+
+验证：`gradle --no-daemon assembleDebug testDebugUnitTest`。新增测试覆盖阻塞网络请求取消、新任务独立完成、阶段切换时取消和思考参数。真机请分别在识图/搜索/思考中换题并点「重新识题」，检查旧结果不会出现；关闭悬浮窗后也不应弹出旧任务错误。

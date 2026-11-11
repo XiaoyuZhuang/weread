@@ -33,7 +33,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Persistent (user-authorized) MediaProjection session.
@@ -60,7 +60,7 @@ class OverlayService : Service() {
     private var captureHandler: Handler? = null
     private var capturePending = false // Only accessed on capture thread.
     private var screenshot: Bitmap? = null // Only accessed on capture thread.
-    private val busy = AtomicBoolean(false)
+    private val generation = AtomicLong(0)
     private val deepseek = DeepSeekClient()
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -144,7 +144,7 @@ class OverlayService : Service() {
                     plane.buffer.rewind()
                     padded.copyPixelsFromBuffer(plane.buffer)
                     val bitmap = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
-                    padded.recycle()
+                    if (padded !== bitmap) padded.recycle()
                     screenshot?.recycle()
                     screenshot = bitmap
                 }
@@ -340,35 +340,44 @@ class OverlayService : Service() {
     }
 
     private fun captureCurrentQuestion() {
-        if (!busy.compareAndSet(false, true)) return
-        button.isEnabled = false
+        val requestId = generation.incrementAndGet()
+        deepseek.cancel()
+        button.text = "重新识题"
+        button.contentDescription = "放弃当前任务，重新截图识题"
+        resultLabel.contentDescription = "正在获取新题答案"
         AppLog.init(this)
         AppLog.write("截图", "开始捕获屏幕")
         resultLabel.text = "截图中…"
         updateOcrDiagnostic("正在截取本次屏幕画面……")
         val handler = captureHandler ?: run { fail("录屏未启动"); return }
         handler.post {
+            if (requestId != generation.get()) return@post
             screenshot?.recycle()
             screenshot = null
             capturePending = true
-            mainHandler.post { root.visibility = View.GONE }
+            mainHandler.post { if (requestId == generation.get()) root.visibility = View.GONE }
             // Keep latest projection frame after the overlay disappears.
             handler.postDelayed({
+                if (requestId != generation.get()) return@postDelayed
                 capturePending = false
                 val frame = screenshot
                 screenshot = null
-                mainHandler.post {
+                mainHandler.post deliver@{
+                    if (requestId != generation.get()) {
+                        frame?.recycle()
+                        return@deliver
+                    }
                     root.visibility = View.VISIBLE
                     if (frame == null) {
                         updateOcrDiagnostic("截图失败：未获取到屏幕画面。请检查是否授权整个屏幕。")
                         fail("截图失败：请确保授权的是整个屏幕")
-                    } else requestAnswer(frame)
+                    } else requestAnswer(frame, requestId)
                 }
             }, 550)
         }
     }
 
-    private fun requestAnswer(bitmap: Bitmap) {
+    private fun requestAnswer(bitmap: Bitmap, requestId: Long) {
         val config = SecureConfig(this)
         val key = config.loadKey()
         if (key.isBlank()) {
@@ -385,17 +394,20 @@ class OverlayService : Service() {
             config.visionModel,
             config.temperature,
             config.searchCount,
+            config.thinkingEnabled,
             onVision = { parsed ->
                 mainHandler.post {
+                    if (requestId != generation.get()) return@post
                     updateOcrDiagnostic(parsed)
                     resultLabel.text = "搜索中…"
                 }
             },
             onSearching = {
-                mainHandler.post { resultLabel.text = "思考中…" }
+                mainHandler.post { if (requestId == generation.get()) resultLabel.text = "思考中…" }
             }
         ) { result ->
             mainHandler.post {
+                if (requestId != generation.get()) return@post
                 result.fold(
                     onSuccess = { answer ->
                         resultLabel.text = "第 ${answer.index} 个"
@@ -419,11 +431,14 @@ class OverlayService : Service() {
 
     private fun finishBusy() {
         button.isEnabled = true
-        busy.set(false)
+        button.text = "获取答案"
+        button.contentDescription = "截取当前题目并获取答案"
     }
 
     override fun onDestroy() {
         isRunning = false
+        generation.incrementAndGet()
+        deepseek.close()
         try {
             if (::windows.isInitialized && ::root.isInitialized) windows.removeView(root)
         } catch (_: Exception) {}
@@ -431,10 +446,13 @@ class OverlayService : Service() {
         try { reader?.setOnImageAvailableListener(null, null) } catch (_: Exception) {}
         try { virtualDisplay?.release() } catch (_: Exception) {}
         try { reader?.close() } catch (_: Exception) {}
-        try { screenshot?.recycle() } catch (_: Exception) {}
+        captureHandler?.post {
+            capturePending = false
+            screenshot?.recycle()
+            screenshot = null
+        }
         try { projection?.stop() } catch (_: Exception) {}
         try { captureThread?.quitSafely() } catch (_: Exception) {}
-        deepseek.close()
         super.onDestroy()
     }
 

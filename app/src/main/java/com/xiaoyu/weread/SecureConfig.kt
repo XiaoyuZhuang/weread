@@ -38,6 +38,10 @@ class SecureConfig(context: Context) {
         get() = prefs.getBoolean("show_image_debug", false)
         set(value) { prefs.edit().putBoolean("show_image_debug", value).apply() }
 
+    var thinkingEnabled: Boolean
+        get() = prefs.getBoolean("deepseek_thinking_enabled", false)
+        set(value) { prefs.edit().putBoolean("deepseek_thinking_enabled", value).apply() }
+
     var temperature: Double
         get() = Double.fromBits(prefs.getLong("deepseek_temperature", 0.2.toBits())).takeIf { it in 0.0..2.0 } ?: 0.2
         set(value) { prefs.edit().putLong("deepseek_temperature", value.coerceIn(0.0, 2.0).toBits()).apply() }
